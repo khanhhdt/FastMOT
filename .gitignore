@@ -1,0 +1,9 @@
+data/
+weights/
+outputs/
+tests/
+.runtime/
+__pycache__/
+*.pyc
+docs/
+PROJECT_PLAN.md

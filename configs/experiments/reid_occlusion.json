@@ -1,0 +1,25 @@
+{
+  "model_config": "configs/models/yolo26s_1280.json",
+  "runtime_config": "configs/runtime/quality.json",
+  "sequences": [
+    {"source": "data/MOT17/train/MOT17-13-FRCNN", "frames": 320},
+    {"source": "data/MOT20/train/MOT20-01", "frames": 320}
+  ],
+  "variants": {
+    "quality_v2": "configs/trackers/tracktrack_quality_v2.yaml",
+    "buffer60": "configs/trackers/tracktrack_quality_buffer60.yaml",
+    "reid60": "configs/trackers/tracktrack_quality_reid60.yaml"
+  },
+  "encoder": {
+    "path": "weights/yolo26n-reid.onnx",
+    "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n-reid.onnx",
+    "sha256": "8529c383197ae4c468eda535d1b165f8b4162cf17bf5fbcff49c7cb6455bc0bb"
+  },
+  "event_protocol": {
+    "visible_min": 0.5,
+    "severely_occluded_max": 0.25,
+    "min_gap_frames": 3,
+    "anchor_window_frames": 5,
+    "iou_threshold": 0.5
+  }
+}

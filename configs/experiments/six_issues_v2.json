@@ -1,0 +1,53 @@
+{
+  "version": "v2",
+  "buffer_tracker_grid": {
+    "track_high_thresh": [0.3],
+    "new_track_thresh": [0.45, 0.5],
+    "track_low_thresh": [0.1],
+    "match_thresh": [0.7, 0.8],
+    "min_track_len": [5],
+    "track_buffer": [30, 90]
+  },
+  "confirmation_tracker_grid": {
+    "track_high_thresh": [0.3],
+    "new_track_thresh": [0.475, 0.49, 0.5],
+    "track_low_thresh": [0.1],
+    "match_thresh": [0.7, 0.8],
+    "min_track_len": [4]
+  },
+  "fine_tracker_grid": {
+    "track_high_thresh": [0.3],
+    "new_track_thresh": [0.45, 0.475, 0.49],
+    "track_low_thresh": [0.1],
+    "match_thresh": [0.7, 0.75, 0.8],
+    "min_track_len": [3, 5]
+  },
+  "tracker_grid": {
+    "track_high_thresh": [0.2, 0.3],
+    "new_track_thresh": [0.2, 0.3, 0.4, 0.5],
+    "track_low_thresh": [0.05, 0.1],
+    "match_thresh": [0.7, 0.8],
+    "min_track_len": [3, 5]
+  },
+  "selection_data": [
+    {"sequence": "MOT17-02-FRCNN", "frames": 300},
+    {"sequence": "MOT17-04-FRCNN", "frames": 200},
+    {"sequence": "MOT17-05-FRCNN", "frames": 300},
+    {"sequence": "MOT17-09-FRCNN", "frames": 525},
+    {"sequence": "MOT17-10-FRCNN", "frames": 300}
+  ],
+  "external_data": [
+    {"sequence": "MOT20-01", "frames": 429},
+    {"sequence": "MOT20-03", "frames": 300}
+  ],
+  "external_rule": "Freeze all configurations before MOT20 evaluation. Do not tune on MOT20 or reuse MOT17-11/13 as unseen data.",
+  "acceptance": {
+    "missed_people": {"FN_reduction_fraction": 0.03, "HOTA_must_not_decrease": true, "FN_diagnostic_accounting": "100% of CLEAR FN explained by cache/GT overlap categories"},
+    "false_positives": {"FP_reduction_fraction": 0.05, "recall_drop_limit_percentage_points": 1.0},
+    "identity": {"IDSW_must_not_increase": true, "IDF1_must_not_decrease": true, "black_frame": "All confirmed IDs before one black frame return on the repeated static-image clip; reject invalid GMC warps; new scene does not reuse IDs"},
+    "speed": {"fast_min_cpu_fps": 15.0, "speedup_over_v1_quality": 1.5, "fast_HOTA_drop_limit_points": 8.0, "required": "Detection/tracking/decode/drawing/export timing and separate fast/quality profiles. 30 FPS is reported separately, never inferred from playback FPS."},
+    "generalization": {"external_sequences": 2, "external_HOTA_drop_limit_points": 0.5, "required": "Baseline and frozen V2 scored on the same previously unused MOT20 windows; document checkpoint training-overlap uncertainty"},
+    "application": {"required": "Actual local upload, one-worker inference queue, accurate progress, preview, downloads, errors, cancellation, restart handling and end-to-end verification"}
+  },
+  "selection_rule": "Among development candidates satisfying FN and FP targets without HOTA/IDF1 loss, prefer fewer ID switches then highest HOTA. If none qualify, preserve the Pareto improvements and mark unmet criteria failed or partial; never relax these targets after measurement."
+}

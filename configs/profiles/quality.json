@@ -1,0 +1,6 @@
+{
+  "label": "Ưu tiên chất lượng",
+  "model_config": "configs/models/yolo26s_1280.json",
+  "tracker_config": "configs/trackers/tracktrack_quality_v2.yaml",
+  "runtime_config": "configs/runtime/quality.json"
+}

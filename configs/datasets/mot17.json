@@ -1,0 +1,15 @@
+{
+  "dataset_root": "data/MOT17/train",
+  "smoke_sequence": "MOT17-09-FRCNN",
+  "development": [
+    "MOT17-02-FRCNN",
+    "MOT17-04-FRCNN",
+    "MOT17-05-FRCNN",
+    "MOT17-09-FRCNN",
+    "MOT17-10-FRCNN"
+  ],
+  "evaluation": [
+    "MOT17-11-FRCNN",
+    "MOT17-13-FRCNN"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "base_model": "configs/models/yolo26s_baseline.json",
+  "base_tracker": "configs/trackers/tracktrack_baseline.yaml",
+  "sequences": [
+    {"name": "MOT17-09-FRCNN", "frames": 525},
+    {"name": "MOT17-04-FRCNN", "frames": 200}
+  ],
+  "variants": [
+    {"name": "baseline", "changes": {}},
+    {"name": "new_030", "parent": "baseline", "changes": {"tracker.new_track_thresh": 0.3}},
+    {"name": "high_030", "parent": "new_030", "changes": {"tracker.track_high_thresh": 0.3}},
+    {"name": "low_010", "parent": "best", "changes": {"tracker.track_low_thresh": 0.1}},
+    {"name": "confirm_1", "parent": "best", "changes": {"tracker.min_track_len": 1}},
+    {"name": "match_080", "parent": "best", "changes": {"tracker.match_thresh": 0.8}},
+    {"name": "buffer_60", "parent": "best", "changes": {"tracker.track_buffer": 60}},
+    {"name": "conf_001", "parent": "best", "changes": {"inference.conf": 0.01}},
+    {"name": "reid_native", "parent": "best", "changes": {"tracker.with_reid": true}},
+    {"name": "gmc_none", "parent": "best", "changes": {"tracker.gmc_method": "none"}},
+    {"name": "gmc_orb", "parent": "best", "changes": {"tracker.gmc_method": "orb"}},
+    {"name": "imgsz_960", "parent": "best", "changes": {"inference.imgsz": 960}}
+  ]
+}

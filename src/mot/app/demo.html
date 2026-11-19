@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Theo dõi người đi bộ · YOLO26 + TrackTrack</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #202c27; background: #f6f7f3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1280px; padding: 36px 36px 48px; margin: auto; }
+    .eyebrow, figcaption, .number { font-size: 12px; font-weight: 650; letter-spacing: .1em; }
+    .eyebrow { color: #386348; margin: 0 0 20px; }
+    h1 { font-size: clamp(32px, 5vw, 54px); line-height: 1.08; letter-spacing: -.045em; margin: 0 0 18px; }
+    header > p { max-width: 700px; color: #536058; line-height: 1.7; }
+    nav { display: flex; gap: 24px; padding: 18px 0 30px; }
+    a { color: #286242; text-underline-offset: 4px; }
+    a:hover { color: #123721; }
+    a:focus-visible, video:focus-visible { outline: 3px solid #bc751b; outline-offset: 5px; }
+    section { padding: 30px 0; border-top: 1px solid #cfd7cd; scroll-margin-top: 20px; }
+    .section-heading { display: flex; align-items: flex-start; gap: 20px; }
+    .number { margin-top: 6px; color: #53745b; }
+    h2 { margin: 0 0 8px; font-size: 25px; letter-spacing: -.025em; }
+    .section-heading p { margin: 0; color: #536058; line-height: 1.6; }
+    .sequence { white-space: nowrap; font-size: 12px; color: #717c74; }
+    .stats { margin: 20px 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+    .stats span { color: #a1aba3; margin: 0 10px; }
+    .videos { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    figure { margin: 0; min-width: 0; }
+    figcaption { margin: 0 0 10px; color: #536058; letter-spacing: .055em; }
+    video { display: block; width: 100%; aspect-ratio: 16/9; background: #101713; border-radius: 5px; }
+    .downloads { display: flex; gap: 12px 22px; flex-wrap: wrap; margin-top: 20px; font-size: 14px; }
+    aside { background: #e8eee5; padding: 22px 26px; margin-top: 16px; border-radius: 5px; }
+    aside h2 { font-size: 18px; }
+    aside p { max-width: 970px; line-height: 1.7; margin: 8px 0 0; color: #44554a; font-size: 14px; }
+    footer { display: flex; flex-wrap: wrap; gap: 12px 24px; padding-top: 24px; font-size: 13px; color: #647067; }
+    @media (max-width: 760px) {
+      main { padding: 25px 18px 32px; }
+      .videos { grid-template-columns: 1fr; gap: 24px; }
+      nav { gap: 20px; }
+      .stats span { margin: 0 4px; }
+      .section-heading { gap: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">YOLO26s DETECT + TRACKTRACK</p>
+      <h1>Theo dõi người đi bộ.</h1>
+      <p>Từ vị trí trong từng khung hình đến ID xuyên suốt video.
+        Xem hai tình huống thực tế và tải kết quả tracking để kiểm tra.</p>
+      <nav aria-label="Chọn cảnh"><a href="#street">01 · Cảnh đường phố</a><a href="#crowd">02 · Cảnh đông người</a></nav>
+    </header>
+    <!--CASES-->
+    <aside>
+      <h2>Đọc kết quả đúng cách</h2>
+      <p>ID chỉ có ý nghĩa trong từng video, không phải danh tính thật hay số người được đếm.
+        FPS xử lý khác tốc độ phát video; cấu hình hiện tại chưa đạt 30 FPS trên CPU đã kiểm tra.
+        Hệ thống vẫn có thể bỏ sót, gán nhầm ID hoặc nhận ID mới sau một frame đen đột ngột.</p>
+      <p>Đây là các clip minh họa đã xử lý sẵn. Không dùng số liệu của clip này thay cho đánh giá bằng ground truth.</p>
+    </aside>
+    <footer>
+      <span>Demo cục bộ · Không gửi video lên mạng</span>
+      <a href="configs/model.json">Cấu hình detector</a><a href="configs/tracktrack.yaml">Cấu hình tracker</a>
+      <a href="manifest.json">Thông tin hai clip</a>
+    </footer>
+  </main>
+</body>
+</html>

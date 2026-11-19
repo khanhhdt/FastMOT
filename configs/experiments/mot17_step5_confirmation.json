@@ -1,0 +1,9 @@
+{
+  "additional_development_windows": [
+    {"name": "MOT17-02-FRCNN", "frames": 300},
+    {"name": "MOT17-05-FRCNN", "frames": 300},
+    {"name": "MOT17-10-FRCNN", "frames": 300}
+  ],
+  "selection_rule": "Compare study winner and baseline using TrackEval COMBINED_SEQ on all five development windows (1625 frames). Highest HOTA, then IDF1, then FPS. Freeze the winner before accessing held-out results.",
+  "held_out_protocol": "After freezing, run baseline and selected configuration on every frame of MOT17-11-FRCNN and MOT17-13-FRCNN. Report both outcomes without further tuning."
+}

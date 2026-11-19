@@ -1,0 +1,6 @@
+{
+  "label": "Ưu tiên tốc độ",
+  "model_config": "configs/models/yolo26n_800.json",
+  "tracker_config": "configs/trackers/tracktrack_v1.yaml",
+  "runtime_config": "configs/runtime/quality.json"
+}

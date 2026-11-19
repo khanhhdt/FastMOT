@@ -1,0 +1,38 @@
+{
+  "selected_variant": "imgsz_960",
+  "frozen_at_utc": "2026-11-18T04:04:00.074790+00:00",
+  "selection_rule": "Compare study winner and baseline using TrackEval COMBINED_SEQ on all five development windows (1625 frames). Highest HOTA, then IDF1, then FPS. Freeze the winner before accessing held-out results.",
+  "model_config": "configs/models/yolo26s.json",
+  "tracker_config": "configs/trackers/tracktrack.yaml",
+  "model_config_sha256": "6acce0791d68455705457d2cff7119df2f93db96c4c958f776ad63f7878d07d5",
+  "tracker_config_sha256": "b27b36c331e2a771a9251403fa0462cf4b1b97cc8f8e136044b282ac395ceb31",
+  "selection_record": "outputs/experiments/mot17_step5_final/selection.json",
+  "development_frames": 1625,
+  "held_out_used_for_selection": false,
+  "development_metrics": {
+    "baseline": {
+      "HOTA": 38.47,
+      "DetA": 26.773,
+      "AssA": 55.693,
+      "IDF1": 42.703,
+      "MOTA": 31.1,
+      "IDSW": 57,
+      "TP": 10152,
+      "FN": 20838,
+      "FP": 457,
+      "fps": 12.551
+    },
+    "candidate": {
+      "HOTA": 47.022,
+      "DetA": 41.738,
+      "AssA": 53.764,
+      "IDF1": 57.296,
+      "MOTA": 45.15,
+      "IDSW": 148,
+      "TP": 17650,
+      "FN": 13340,
+      "FP": 3510,
+      "fps": 6.887
+    }
+  }
+}

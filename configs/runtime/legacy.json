@@ -1,0 +1,5 @@
+{
+  "robust_gmc": false,
+  "torch_threads": 8,
+  "capture_detections": true
+}

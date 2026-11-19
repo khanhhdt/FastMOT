@@ -1,0 +1,17 @@
+{
+  "model": "yolo26n.pt",
+  "task": "detect",
+  "weights": "weights/yolo26n.pt",
+  "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26n.pt",
+  "sha256": "9b09cc8bf347f0fc8a5f7657480587f25db09b34bf33b0652110fb03a8ad4fef",
+  "training_dataset_reference_in_checkpoint": "coco.yaml",
+  "training_data_note": "COCO according to checkpoint metadata and Ultralytics documentation; image overlap with MOT17/MOT20 has not been independently audited.",
+  "inference": {
+    "imgsz": 800,
+    "conf": 0.01,
+    "iou": 0.7,
+    "max_det": 1000,
+    "nms": null
+  },
+  "display_confidence": 0.25
+}
