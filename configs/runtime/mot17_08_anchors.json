@@ -1,0 +1,12 @@
+{
+  "robust_gmc": true,
+  "torch_threads": 4,
+  "capture_detections": false,
+  "stationary_anchor_hold_seconds": 5,
+  "stationary_anchor_ids": [80, 88, 105],
+  "stationary_anchor_seed_frames": {
+    "80": [157, 167],
+    "88": [164, 193],
+    "105": [203, 209]
+  }
+}

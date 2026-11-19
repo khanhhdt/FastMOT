@@ -36,6 +36,8 @@ def replay_tracking(source_run, output, tracker_config):
     if output.exists() and any(output.iterdir()):
         raise FileExistsError(output)
     summary = deepcopy(json.loads((source_run / "summary.json").read_text()))
+    if {"stationary_anchor_id", "stationary_anchor_ids"} & summary.get("tracking_policy", {}).keys():
+        raise ValueError("Replay does not apply stationary-anchor ID recovery")
     config = YAML.load(tracker_config)
     with tempfile.TemporaryDirectory(prefix="mot-replay-config-") as scratch:
         path = Path(scratch) / "original.yaml"

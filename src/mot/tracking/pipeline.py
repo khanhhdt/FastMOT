@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -21,6 +22,7 @@ from .sources import open_source
 from .visualization import TrackVisualizer
 from .mot_io import write_mot_frame
 from .motion import ObservedGMC, SceneObserver, reset_scene
+from .stationary import StationaryAnchor, StationaryAnchors
 
 
 def extract_tracks(result, width, height):
@@ -62,6 +64,31 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
         runtime.update(json.loads(Path(runtime_config).read_text()))
     if not isinstance(runtime["torch_threads"], int) or not 1 <= runtime["torch_threads"] <= 16:
         raise ValueError("torch_threads must be between 1 and 16")
+    anchor_id = runtime.get("stationary_anchor_id")
+    if anchor_id is not None and (type(anchor_id) is not int or anchor_id < 1):
+        raise ValueError("stationary_anchor_id must be a positive track ID")
+    anchor_ids = runtime.get("stationary_anchor_ids")
+    if anchor_ids is not None and (
+        anchor_id is not None or not isinstance(anchor_ids, list) or not anchor_ids
+        or any(type(identity) is not int or identity < 1 for identity in anchor_ids)
+        or len(set(anchor_ids)) != len(anchor_ids)
+    ):
+        raise ValueError("stationary_anchor_ids must be a list of unique positive IDs, supplied without stationary_anchor_id")
+    seed_frames = runtime.get("stationary_anchor_seed_frames")
+    if seed_frames is not None and (
+        anchor_ids is None or not isinstance(seed_frames, dict)
+        or any(
+            identity not in {str(i) for i in anchor_ids}
+            or not isinstance(window, list) or len(window) != 2
+            or any(type(frame) is not int for frame in window)
+            or window[0] < 1 or not 5 <= window[1] - window[0] + 1 <= StationaryAnchor.LEARN_FRAMES
+            for identity, window in seed_frames.items()
+        )
+    ):
+        raise ValueError("stationary_anchor_seed_frames needs selected IDs and 5–30 consecutive frames per window")
+    hold_seconds = runtime.get("stationary_anchor_hold_seconds", 4)
+    if type(hold_seconds) not in (int, float) or not math.isfinite(hold_seconds) or hold_seconds <= 0:
+        raise ValueError("stationary_anchor_hold_seconds must be positive and finite")
     options = {**manifest["inference"], "classes": [0],
                "device": 0 if torch.cuda.is_available() else "cpu", "verbose": False}
     torch.set_num_threads(min(4, os.cpu_count() or 1))
@@ -97,6 +124,12 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
         context["captured_at"] = time.perf_counter()
 
     with open_source(source, max_frames) as (info, frames):
+        max_gap = max(1, round(info["fps"] * hold_seconds))
+        anchor = None
+        if anchor_ids is not None:
+            anchor = StationaryAnchors(anchor_ids, max_gap, {int(i): window for i, window in (seed_frames or {}).items()})
+        elif anchor_id is not None:
+            anchor = StationaryAnchor(anchor_id, max_gap)
         width, height = info["width"], info["height"]
         video_size = (width + width % 2, height + height % 2)
         total = min(info["frames"], max_frames) if max_frames else info["frames"]
@@ -127,7 +160,7 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
                         raise ValueError(f"Frame {index} dimensions differ from source metadata")
                     model_started = time.perf_counter()
                     stages["decode"] += model_started - frame_started
-                    context.update(index=index, event=observer.observe(image) if runtime["robust_gmc"] else "normal")
+                    context.update(index=index, event=observer.observe(image) if runtime["robust_gmc"] or anchor else "normal")
                     result = model.track(image, persist=True, tracker=str(tracker_config), **options)[0]
                     tracked_at = time.perf_counter()
                     stages["detection"] += context["captured_at"] - model_started
@@ -138,6 +171,8 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
                     frames_with_features += int(any(getattr(t, "curr_feat", None) is not None
                                                     for t in tracker.tracked_stracks))
                     tracks = extract_tracks(result, width, height)
+                    if anchor is not None:
+                        tracks = anchor.update(index, tracks, scene_cut=context["event"] == "scene_cut")
                     handle.write(json.dumps({"frame": index, "tracks": tracks}, allow_nan=False) + "\n")
                     write_mot_frame(mot, index, tracks)
                     if runtime["capture_detections"]:
@@ -213,6 +248,19 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
         "timing_scope": "After detector warm-up: source decode, tracking initialization/inference, drawing, JSONL/MOT export and video finalization; excludes model loading and warm-up",
         "note": "Unique track IDs are not a ground-truth person count or an accuracy metric",
     }
+    if anchor_ids is not None:
+        summary["tracking_policy"]["stationary_anchor_ids"] = anchor_ids
+        if seed_frames:
+            summary["tracking_policy"]["stationary_anchor_seed_frames"] = seed_frames
+        summary["stationary_anchors"] = {
+            "max_gap_frames": anchor.max_gap_frames,
+            "by_id": {str(identity): item.events for identity, item in anchor.anchors.items()},
+        }
+    elif anchor_id is not None:
+        summary["tracking_policy"]["stationary_anchor_id"] = anchor_id
+        summary["stationary_anchor"] = {"id": anchor_id, "max_gap_frames": anchor.max_gap_frames, "events": anchor.events}
+    if anchor is not None and hold_seconds != 4:
+        summary["tracking_policy"]["stationary_anchor_hold_seconds"] = hold_seconds
     (output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(f"PASS: {count} frames, {observations} track observations. Output: {output}", flush=True)
     return summary

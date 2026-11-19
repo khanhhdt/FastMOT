@@ -21,7 +21,7 @@ def main():
     parser.add_argument("--profile", choices=["fast", "quality"], default="quality", help="Preset; individual config flags override its files")
     parser.add_argument("--model-config", type=Path, help="Override the profile's model manifest")
     parser.add_argument("--tracker-config", type=Path, help="Override the profile's TrackTrack YAML")
-    parser.add_argument("--runtime-config", type=Path, help="GMC guard, capture and CPU thread configuration")
+    parser.add_argument("--runtime-config", type=Path, help="GMC guard, capture, CPU threads and optional stationary anchor")
     args = parser.parse_args()
     if args.frames is not None and args.frames < 1:
         parser.error("--frames must be positive")
