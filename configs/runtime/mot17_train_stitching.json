@@ -1,0 +1,29 @@
+{
+  "fixed": {
+    "MOT17-02-FRCNN": {
+      "seed_frames": {
+        "38": [
+          284,
+          298
+        ]
+      },
+      "source_tracks_sha256": "f60c1a0075ce5665c2d9dca776926e0df0140c4a109769ccf2b1b40000470aae"
+    },
+    "MOT17-04-FRCNN": {
+      "seed_frames": {
+        "45": [
+          326,
+          340
+        ]
+      },
+      "source_tracks_sha256": "f1cf3ea2b863835bbfa521d1844d5b00d15b51f1cbe6feca7d4752fcb7f11881"
+    },
+    "MOT17-09-FRCNN": {}
+  },
+  "moving": [
+    "MOT17-05-FRCNN",
+    "MOT17-10-FRCNN",
+    "MOT17-11-FRCNN",
+    "MOT17-13-FRCNN"
+  ]
+}

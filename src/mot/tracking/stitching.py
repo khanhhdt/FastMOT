@@ -1,4 +1,4 @@
-"""Join interrupted tracks in recorded footage from a fixed camera."""
+"""Join interrupted tracks in recorded footage using appearance and motion."""
 
 from bisect import bisect_left, bisect_right
 from collections import defaultdict
@@ -7,6 +7,8 @@ import math
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
+
+from .motion import valid_warp
 
 
 POLICY = {
@@ -19,6 +21,35 @@ POLICY = {
     "minimum_margin": 0.04,
     "assignment": "hungarian",
 }
+
+
+class CameraMotion:
+    """Map nearby frames into a shared image coordinate system."""
+
+    def __init__(self, warps, width, height):
+        self.steps = [np.eye(3)]
+        self.inverses = [np.eye(3)]
+        self.segments = [0]
+        for frame, warp in enumerate(warps, 1):
+            step = np.eye(3)
+            usable = frame > 1 and warp is not None and valid_warp(warp, width, height)
+            # Sparse optical flow also returns exact identity when estimation fails.
+            usable = usable and not np.array_equal(warp, step[:2])
+            if usable:
+                step[:2] = warp
+            self.steps.append(step)
+            self.inverses.append(np.linalg.inv(step))
+            self.segments.append(self.segments[-1] if usable else frame)
+
+    def relative(self, frames, reference):
+        if any(self.segments[frame] != self.segments[reference] for frame in frames):
+            return None
+        matrices = {reference: np.eye(3)}
+        for frame in range(reference - 1, min(frames) - 1, -1):
+            matrices[frame] = matrices[frame + 1] @ self.steps[frame + 1]
+        for frame in range(reference + 1, max(frames) + 1):
+            matrices[frame] = matrices[frame - 1] @ self.inverses[frame]
+        return np.stack([matrices[frame][:2] for frame in frames])
 
 
 @dataclass
@@ -59,7 +90,7 @@ def clear_observations(tracks, width, height):
                  track["confidence"] >= 0.65 and sizes[index, 0] >= 0.22 * sizes[index, 1])]
 
 
-def fit_endpoint(identity, scene, observations, clear, departure, fps):
+def fit_endpoint(identity, scene, observations, clear, departure, fps, camera_motion=None):
     ordered = observations[::-1] if departure else observations
     boundary = ordered[0][0]
     window = round(fps * POLICY["endpoint_window_seconds"])
@@ -68,7 +99,8 @@ def fit_endpoint(identity, scene, observations, clear, departure, fps):
     for frame, box in ordered:
         if abs(frame - boundary) > extended:
             break
-        if frame in clear:
+        if frame in clear and (camera_motion is None or
+                               camera_motion.segments[frame] == camera_motion.segments[boundary]):
             nearby.append((frame, box))
     if len(nearby) < 3:
         return None
@@ -85,10 +117,15 @@ def fit_endpoint(identity, scene, observations, clear, departure, fps):
         return None
     boxes = np.array(boxes)
     points = np.column_stack(((boxes[:, 0] + boxes[:, 2]) / 2, boxes[:, 3]))
+    heights = boxes[:, 3] - boxes[:, 1]
+    if camera_motion is not None:
+        warps = camera_motion.relative(frames, nearest)
+        points = np.einsum("nij,nj->ni", warps[:, :, :2], points) + warps[:, :, 2]
+        heights = heights * np.linalg.norm(warps[:, :, 1], axis=1)
     seconds = np.array(frames) / fps
     seconds -= seconds.mean()
     velocity = (seconds @ points) / (seconds @ seconds)
-    height = float(np.median(boxes[:, 3] - boxes[:, 1]))
+    height = float(np.median(heights))
     if np.linalg.norm(velocity) / height > 3.5:
         return None
     residuals = points - points.mean(axis=0) - seconds[:, None] * velocity
@@ -100,7 +137,7 @@ def fit_endpoint(identity, scene, observations, clear, departure, fps):
                     position_error, apply_from)
 
 
-def motion_candidates(records, info, scene_cuts):
+def motion_candidates(records, info, scene_cuts, camera_motion=None):
     """Screen track endpoints by time, movement and perspective-scaled distance."""
     observed, clear = defaultdict(list), defaultdict(set)
     for record in records:
@@ -117,8 +154,8 @@ def motion_candidates(records, info, scene_cuts):
         if len(observations) < max(5, round(fps * 0.20)):
             continue
         reliable = clear[scene, identity]
-        start = fit_endpoint(identity, scene, observations, reliable, False, fps)
-        end = fit_endpoint(identity, scene, observations, reliable, True, fps)
+        start = fit_endpoint(identity, scene, observations, reliable, False, fps, camera_motion)
+        end = fit_endpoint(identity, scene, observations, reliable, True, fps, camera_motion)
         if start is not None and end is not None and end.frames[0] - start.frames[0] >= fps:
             start.opposite_samples = dict(zip(end.frames, end.boxes))
             end.opposite_samples = dict(zip(start.frames, start.boxes))
@@ -136,27 +173,39 @@ def motion_candidates(records, info, scene_cuts):
         for start in starts[first:stop]:
             if end.scene != start.scene or end.identity == start.identity:
                 continue
-            error = motion_error(end, start, fps)
+            error = motion_error(end, start, fps, camera_motion)
             if error is not None:
                 candidates.append((end, start, error))
     return candidates
 
 
-def motion_error(end, start, fps):
-    height = math.sqrt(end.height * start.height)
-    if min(end.height, start.height) / max(end.height, start.height) < 0.45:
+def motion_error(end, start, fps, camera_motion=None):
+    start_foot, start_velocity = start.foot, start.velocity
+    start_height, start_error = start.height, start.position_error
+    if camera_motion is not None:
+        warps = camera_motion.relative([start.frames[0]], end.frames[0])
+        if warps is None:
+            return None
+        warp = warps[0]
+        start_foot = warp[:, :2] @ start_foot + warp[:, 2]
+        start_velocity = warp[:, :2] @ start_velocity
+        camera_scale = np.linalg.norm(warp[:, 1])
+        start_height *= camera_scale
+        start_error *= camera_scale
+    height = math.sqrt(end.height * start_height)
+    if min(end.height, start_height) / max(end.height, start_height) < 0.45:
         return None
     seconds = (start.frames[0] - end.frames[0]) / fps
-    displacement = start.foot - end.foot
+    displacement = start_foot - end.foot
     distance = np.linalg.norm(displacement) / height
-    slowest = min(np.linalg.norm(p.velocity) / p.height for p in (end, start))
+    slowest = min(np.linalg.norm(end.velocity) / end.height, np.linalg.norm(start_velocity) / start_height)
     if distance > 0.25 + 2.5 * seconds or (distance < 0.20 and slowest < 0.10):
         return None
     # Compare predictions halfway through the missing interval. Position uncertainty
     # grows with elapsed time and with the residuals of the endpoint fits.
     forward = end.foot + 0.5 * seconds * end.velocity
-    backward = start.foot - 0.5 * seconds * start.velocity
-    scale = height * (0.25 + 0.45 * seconds) + end.position_error + start.position_error
+    backward = start_foot - 0.5 * seconds * start_velocity
+    scale = height * (0.25 + 0.45 * seconds) + end.position_error + start_error
     error = float(np.linalg.norm(forward - backward) / scale)
     return error if error <= 2 else None
 

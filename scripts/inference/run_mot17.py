@@ -9,9 +9,11 @@ import json
 from pathlib import Path
 from shutil import copyfile, copytree
 import sys
+from tempfile import TemporaryDirectory
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from mot.tracking.pipeline import run_tracking
@@ -23,9 +25,10 @@ import torch
 import ultralytics
 
 
-def discover_sequences(dataset, benchmark="MOT17"):
+def discover_sequences(dataset, benchmark="MOT17", train_only=False):
     sequences = []
-    for split in ("train", "test"):
+    splits = ("train",) if train_only else ("train", "test")
+    for split in splits:
         pattern = "MOT*-FRCNN" if benchmark == "MOT17" else "MOT20-*"
         for source in sorted((Path(dataset) / split).glob(pattern)):
             signatures, latest_change = {}, 0
@@ -59,8 +62,8 @@ def discover_sequences(dataset, benchmark="MOT17"):
                               "frames": int(metadata["seqLength"]), "variants": signatures,
                               "latest_image_change_ns": latest_change, "status": "pending"})
             print(f"INPUT OK {split}/{source.name}: {metadata['seqLength']} frames ({len(variants)} matching input names)", flush=True)
-    if not sequences or not all(any(s["split"] == split for s in sequences) for split in ("train", "test")):
-        raise ValueError(f"Both {benchmark} train and test sequences are required")
+    if not all(any(s["split"] == split for s in sequences) for split in splits):
+        raise ValueError(f"{benchmark} sequences are required for {', '.join(splits)}")
     return sequences
 
 
@@ -97,6 +100,45 @@ def verify_run(path, count):
     return summary
 
 
+def finish_tracking(raw, target, item, settings, policy):
+    """Apply the batch policy to a complete online run before publishing its exports."""
+    from scripts.inference.stitch_tracks import stitch
+
+    name = item["name"]
+    fixed = settings["fixed"]
+    moving = item["split"] == "train" and name in settings["moving"]
+    use_fixed = item["split"] == "train" and name in fixed
+    seeds = {}
+    if use_fixed and fixed[name]:
+        seed_config = fixed[name]
+        source_hash = hashlib.sha256((raw / "tracks.txt").read_bytes()).hexdigest()
+        if source_hash == seed_config["source_tracks_sha256"]:
+            seeds = {int(identity): window for identity, window in seed_config["seed_frames"].items()}
+        else:
+            print(f"SKIP STATIONARY ANCHORS {name}: source IDs differ from the reviewed run", flush=True)
+    with TemporaryDirectory(dir=target.parent) as work:
+        prepared = Path(work) / "run"
+        if moving or use_fixed:
+            stitch(raw, prepared, moving, stationary_seed_frames=seeds)
+        else:
+            copytree(raw, prepared)
+        summary_path = prepared / "summary.json"
+        summary = json.loads(summary_path.read_text())
+        summary["applied_tracking_policy"] = summary["tracking_policy"]
+        summary["tracking_policy"] = policy
+        summary_path.write_text(json.dumps(summary, indent=2) + "\n")
+        prepared.replace(target)
+
+
+def ensure_preview(run):
+    preview = run / "preview.mp4"
+    if not preview.exists():
+        with TemporaryDirectory(dir=run) as work:
+            pending = Path(work) / "preview.mp4"
+            browser_video(run / "tracking.mp4", pending)
+            pending.replace(preview)
+
+
 def write_index(output, manifest):
     benchmark = manifest.get("benchmark", "MOT17")
     model = json.loads((output / "configs/model.json").read_text())
@@ -110,7 +152,9 @@ def write_index(output, manifest):
                 continue
             name = escape(item["name"])
             folder = f"{split}/{name}"
-            cards.append(f'''<article><h3>{name}</h3><p>{item['frames']} frame · {item['fps']:.2f} FPS xử lý</p>
+            fps = item.get("fps")
+            timing = f" · {fps:.2f} FPS xử lý" if fps is not None else " · Nối quỹ đạo ngoại tuyến"
+            cards.append(f'''<article><h3>{name}</h3><p>{item['frames']} frame{timing}</p>
               <video controls muted playsinline preload="none" poster="{folder}/frame_000001.jpg" src="{folder}/preview.mp4"></video>
               <p class="links"><a href="{folder}/preview.mp4" download>Video</a>
               <a href="{folder}/tracks.txt" download>MOT TXT</a><a href="{folder}/tracks.jsonl" download>JSONL</a>
@@ -119,7 +163,14 @@ def write_index(output, manifest):
             sections.append(f'<section id="{split}"><h2>{split.upper()}</h2><div class="grid">{"".join(cards)}</div></section>')
     complete = sum(i["status"] == "complete" for i in manifest["sequences"])
     metrics = '<p><a href="evaluation_train/metrics.json">Metric toàn bộ train</a></p>' if (output / "evaluation_train/metrics.json").exists() else ''
-    exports = '<p><a href="motchallenge/train.zip">Tải MOT TXT train</a> · <a href="motchallenge/test.zip">Tải MOT TXT test</a></p>' if (output / "motchallenge/test.zip").exists() else ''
+    exports = " · ".join(f'<a href="motchallenge/{split}.zip">Tải MOT TXT {split}</a>' for split in ("train", "test")
+                         if (output / f"motchallenge/{split}.zip").exists())
+    exports = f"<p>{exports}</p>" if exports else ""
+    navigation = " · ".join(f'<a href="#{split}">{split.title()}</a>' for split in ("train", "test")
+                            if any(item["split"] == split for item in manifest["sequences"]))
+    test_note = " Tập test chỉ có kết quả dự đoán." if any(
+        item["split"] == "test" for item in manifest["sequences"]
+    ) else ""
     dedup = ("Các ảnh DPM/FRCNN/SDP đã được đối chiếu SHA-256. Mỗi video xử lý một lần, sau đó xuất TXT theo cả ba tên."
              if benchmark == "MOT17" else "Mỗi sequence có một video theo dõi và một tệp MOT TXT.")
     page = output / "index.tmp"
@@ -133,9 +184,9 @@ def write_index(output, manifest):
       @media(max-width:760px){{main{{padding:20px}}.grid{{grid-template-columns:1fr}}h1{{font-size:28px}}}}</style>
       <main><p>{model_label} · {model["inference"]["imgsz"]} px · TrackTrack · {profile}</p><h1>Kết quả toàn bộ {benchmark}</h1>
       <p>Đã hoàn tất {complete}/{len(manifest['sequences'])} video khác nhau · {manifest['unique_frames']} frame nguồn.</p>
-      <nav><a href="#train">Train</a> · <a href="#test">Test</a> · <a href="manifest.json">Thông tin lần chạy</a></nav>
+      <nav>{navigation} · <a href="manifest.json">Thông tin lần chạy</a></nav>
       {metrics}{exports}{''.join(sections)}<aside><p>{dedup} ID có ý nghĩa trong từng video. FPS xử lý khác tốc độ phát.</p>
-      <p>Điểm train được chấm bằng GT cục bộ. Tập test chỉ có kết quả dự đoán.</p></aside></main></html>''', encoding="utf-8")
+      <p>Điểm train được chấm bằng GT cục bộ.{test_note}</p></aside></main></html>''', encoding="utf-8")
     page.replace(output / "index.html")
 
 
@@ -144,7 +195,8 @@ def main():
     parser.add_argument("--benchmark", choices=["MOT17", "MOT20"], default="MOT17")
     parser.add_argument("--output", type=Path, help="Defaults to outputs/mot17_full or outputs/mot20_full")
     parser.add_argument("--resume", action="store_true", help="Continue this batch, retaining completed sequences")
-    parser.add_argument("--profile", choices=["quality", "fast"], default="quality", help="New batches use this profile; resume uses its saved configuration")
+    parser.add_argument("--profile", choices=["quality", "fast", "reid"], default="quality", help="New batches use this profile; resume uses its saved configuration")
+    parser.add_argument("--train-only", action="store_true", help="Process and score just the train split")
     args = parser.parse_args()
     benchmark = args.benchmark
     output = (args.output or ROOT / f"outputs/{benchmark.lower()}_full").resolve()
@@ -154,8 +206,10 @@ def main():
         manifest = json.loads((output / "manifest.json").read_text())
         if manifest.get("benchmark", "MOT17") != benchmark:
             raise ValueError(f"Resume with --benchmark {manifest.get('benchmark', 'MOT17')}")
+        if args.train_only and any(item["split"] != "train" for item in manifest["sequences"]):
+            raise ValueError("Resume the existing train/test batch without --train-only")
     else:
-        items = discover_sequences(ROOT / "data" / benchmark, benchmark)
+        items = discover_sequences(ROOT / "data" / benchmark, benchmark, args.train_only)
         (output / "configs").mkdir(parents=True)
         profile = json.loads((ROOT / f"configs/profiles/{args.profile}.json").read_text())
         copyfile(ROOT / profile["model_config"], output / "configs/model.json")
@@ -168,12 +222,26 @@ def main():
                                       if benchmark == "MOT17" else None),
                     "profile": args.profile,
                     "configs": {"model": "configs/model.json", "tracker": "configs/tracktrack.yaml", "runtime": "configs/runtime.json"}}
+        if "sequence_stitching" in profile:
+            manifest["sequence_stitching"] = json.loads((ROOT / profile["sequence_stitching"]).read_text())
+            manifest["stitching_sha256"] = {
+                path: hashlib.sha256((ROOT / path).read_bytes()).hexdigest()
+                for path in ("scripts/inference/stitch_tracks.py", "src/mot/tracking/stitching.py",
+                             "src/mot/tracking/stationary.py", "weights/yolo26n-reid.onnx")
+            }
     model_path, tracker_path = output / "configs/model.json", output / "configs/tracktrack.yaml"
     runtime_path = output / "configs/runtime.json"
     if not runtime_path.exists():
         # Resuming a V1 archive must keep its original, unguarded camera motion.
         runtime_path.write_text(json.dumps({"robust_gmc": False, "torch_threads": 8, "capture_detections": False}) + "\n")
-    policy = {"robust_gmc": json.loads(runtime_path.read_text())["robust_gmc"]}
+    online_policy = {"robust_gmc": json.loads(runtime_path.read_text())["robust_gmc"]}
+    settings = manifest.get("sequence_stitching")
+    policy = online_policy
+    if settings is not None:
+        for path, digest in manifest["stitching_sha256"].items():
+            if hashlib.sha256((ROOT / path).read_bytes()).hexdigest() != digest:
+                raise ValueError(f"Stitching inputs changed since the batch started: {path}")
+        policy = {**online_policy, "sequence_stitching": settings, "stitching_sha256": manifest["stitching_sha256"]}
     model = json.loads(model_path.read_text())
     tracker_text = tracker_path.read_text()
 
@@ -196,9 +264,8 @@ def main():
             if not matching_run(target, item, model, tracker_text, policy):
                 raise ValueError(f"Existing output does not match the batch configuration: {target}")
             summary = verify_run(target, item["frames"])
-            if not (target / "preview.mp4").exists():
-                browser_video(target / "tracking.mp4", target / "preview.mp4")
-            item.update(status="complete", output=str(target.relative_to(output)), fps=summary["fps"],
+            ensure_preview(target)
+            item.update(status="complete", output=str(target.relative_to(output)), fps=summary.get("fps"),
                         track_observations=summary["track_observations"],
                         prediction_sha256=hashlib.sha256((target / "tracks.txt").read_bytes()).hexdigest())
             save()
@@ -213,29 +280,40 @@ def main():
                       ROOT / "outputs/improvements/external/quality/runs" / item["name"],
                       ROOT / "outputs/experiments/mot17_step5_final/held_out/runs/selected" / item["name"],
                       ROOT / "outputs/experiments/mot17_step5/runs/imgsz_960" / item["name"]]
-        candidate = next((p for p in candidates if matching_run(p, item, model, tracker_text, policy)), None)
+        if settings is not None and item["split"] == "train" and benchmark == "MOT17":
+            candidates[:0] = [ROOT / "outputs/mot17_train_full_benchmark/reid" / item["name"],
+                              ROOT / "outputs/mot17_train_benchmark/reid" / item["name"]]
+        candidate = next((p for p in candidates if matching_run(p, item, model, tracker_text, online_policy)), None)
         item["status"] = "running"
         save()
         if partial.exists():
             print(f"RESUME EXPORT {item['split']}/{item['name']}", flush=True)
-        elif candidate:
-            verify_run(candidate, item["frames"])
-            copytree(candidate, partial)
-            item["reused_from"] = str(candidate)
-            print(f"REUSE {item['split']}/{item['name']}: {item['frames']} verified frames", flush=True)
         else:
-            print(f"RUN {item['split']}/{item['name']}: {item['frames']} frames", flush=True)
-            run_tracking(item["source"], partial, None, model_path, tracker_path, runtime_path)
+            raw = output / "online" / item["split"] / item["name"] if settings is not None else partial
+            if raw.exists() and not matching_run(raw, item, model, tracker_text, online_policy):
+                archive = output / "incomplete" / f"{item['name']}_online_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                archive.parent.mkdir(parents=True, exist_ok=True)
+                raw.rename(archive)
+            if not raw.exists():
+                if candidate:
+                    verify_run(candidate, item["frames"])
+                    copytree(candidate, raw)
+                    item["reused_from"] = str(candidate)
+                    print(f"REUSE {item['split']}/{item['name']}: {item['frames']} verified frames", flush=True)
+                else:
+                    print(f"RUN {item['split']}/{item['name']}: {item['frames']} frames", flush=True)
+                    run_tracking(item["source"], raw, None, model_path, tracker_path, runtime_path)
+            if settings is not None:
+                finish_tracking(raw, partial, item, settings, policy)
         summary = verify_run(partial, item["frames"])
-        if not (partial / "preview.mp4").exists():
-            browser_video(partial / "tracking.mp4", partial / "preview.mp4")
+        ensure_preview(partial)
         partial.rename(target)
-        item.update(status="complete", output=str(target.relative_to(output)), fps=summary["fps"],
+        item.update(status="complete", output=str(target.relative_to(output)), fps=summary.get("fps"),
                     track_observations=summary["track_observations"],
                     prediction_sha256=hashlib.sha256((target / "tracks.txt").read_bytes()).hexdigest())
         save()
         print(f"COMPLETE {item['split']}/{item['name']}", flush=True)
-    for split in ("train", "test"):
+    for split in sorted({item["split"] for item in manifest["sequences"]}):
         destination = output / "motchallenge" / split
         destination.mkdir(parents=True, exist_ok=True)
         for item in manifest["sequences"]:

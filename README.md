@@ -72,6 +72,15 @@ python scripts/inference/run_mot17.py --benchmark MOT17 --profile quality --outp
 python scripts/inference/run_mot17.py --benchmark MOT20 --profile quality --output outputs/mot_full_v2/mot20
 ```
 
+Lệnh sau chạy và chấm riêng MOT17 train với ReID và nối quỹ đạo.
+
+```bash
+YOLO_AUTOINSTALL=false PYTHONPATH="$PWD/.runtime/reid-python" \
+  python scripts/inference/run_mot17.py --profile reid --train-only --output outputs/mot17_train_reid_batch
+```
+
+Profile `reid` nối sau bù camera trên MOT17-05, 10, 11 và 13. MOT17-02, 04 và 09 dùng nối theo tọa độ ảnh. Neo vị trí trên 02 và 04 được áp dụng khi MOT TXT đầu vào khớp bản đã duyệt. Các sequence còn lại dùng đầu ra trực tiếp từ TrackTrack + ReID.
+
 Dùng `--resume` nếu một lượt bị ngắt và đã có `manifest.json`. Chỉ chạy một tiến trình cho mỗi thư mục đầu ra. Các file ZIP và điểm train được xuất sau khi toàn bộ sequence của bộ đó hoàn tất.
 
 Đã có kết quả đầy đủ tại [outputs/mot17_full](outputs/mot17_full/index.html), khoảng 1,6 GB: **14 video, 11.235 frame, 42 tệp MOT**. Xem trên [localhost:8001](http://127.0.0.1:8001), tải [MOT TXT train](outputs/mot17_full/motchallenge/train.zip) hoặc [MOT TXT test](outputs/mot17_full/motchallenge/test.zip). Kiểm chứng ở [mot17_full_validation.json](outputs/checks/mot17_full_validation.json).

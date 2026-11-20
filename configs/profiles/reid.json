@@ -1,0 +1,7 @@
+{
+  "label": "TrackTrack + ReID và nối quỹ đạo",
+  "model_config": "configs/models/yolo26s_1280.json",
+  "tracker_config": "configs/trackers/tracktrack_quality_reid60.yaml",
+  "runtime_config": "configs/runtime/quality.json",
+  "sequence_stitching": "configs/runtime/mot17_train_stitching.json"
+}
