@@ -6,26 +6,11 @@ FastMOT tracks pedestrians from an IP camera on a CPU and shows live bounding bo
 
 ## Tracking demo
 
-![Pedestrians with colored bounding boxes and track IDs](deploy/video/tracking-demo.gif)
+<img src="deploy/video/tracking-demo.gif" width="720" alt="Pedestrians with colored bounding boxes and track IDs">
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    IP["IP camera"] -->|RTSP| Capture
-    Sim["Sample video via FFmpeg and MediaMTX"] -->|RTSP| Capture
-
-    subgraph Service["Camera service · CPU"]
-        Capture["RTSP capture · latest frame"]
-        Capture -->|Sampled frames| Track["YOLO26s detection → TrackTrack + YOLO26n ReID<br/>OpenVINO FP32 · 1280 px · 4 FPS target"]
-        Capture -->|Live frames| Flow["Optical flow · 30 FPS display target"]
-        Track -->|Box and ID updates| Flow
-        Flow --> Preview["Annotated JPEG stream · localhost:8003"]
-    end
-
-    Preview --> Proxy["Caddy · HTTPS + sign-in"]
-    Proxy --> Browser["LAN browser"]
-```
+<img src="deploy/architecture.svg" width="720" alt="RTSP camera architecture with 4 FPS tracking and 30 FPS optical-flow display targets, delivered to a LAN browser through Caddy">
 
 ## Quick start
 
@@ -67,3 +52,11 @@ python scripts/inference/run_tracking.py \
   --model-config configs/models/yolo26s_1280_openvino_fp32.json \
   --output outputs/runs/my_video
 ```
+
+## License
+
+FastMOT source code is licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only). [Full license text](LICENSE)
+
+The bundled YOLO26s detector and YOLO26n ReID weights originate from Ultralytics models licensed under AGPL-3.0. [Ultralytics licensing](https://www.ultralytics.com/license)
+
+The simulation fixture and tracking GIF are based on the MOT17-04-FRCNN sequence from MOTChallenge and are shared under CC BY-NC-SA 3.0. The fixture encodes the source frames as video, and the GIF adds FastMOT tracking overlays. [MOT17 source and license](https://motchallenge.net/data/MOT17/) · [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/)
