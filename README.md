@@ -2,13 +2,11 @@
 
 FastMOT tracks pedestrians from an IP camera on a CPU and shows live bounding boxes and track IDs in a browser. It also processes recorded video from the command line.
 
-[Quick start](#quick-start) · [Architecture](#architecture) · [LAN deployment](deploy/camera/README.md)
+[Quick start](#quick-start) · [Architecture](#architecture) · [Deployment](deploy/camera/README.md)
 
 ## Tracking demo
 
 ![Pedestrians with colored bounding boxes and track IDs](deploy/video/tracking-demo.gif)
-
-The first 10 seconds of the live tracking recording show the full camera view. [MOT17-04 source clip](https://motchallenge.net/data/MOT17/)
 
 ## Architecture
 
@@ -29,8 +27,6 @@ flowchart TD
     Proxy --> Browser["LAN browser"]
 ```
 
-The tracking pass assigns IDs and corrects boxes. Optical flow moves those boxes between tracking passes so the image and overlay can update together at the source frame rate, up to 30 FPS. The browser reports tracking and display FPS separately.
-
 ## Quick start
 
 ### CPU setup
@@ -44,8 +40,6 @@ pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install -r requirements.txt
 ```
 
-The OpenVINO detector and ONNX ReID weights are included in [`weights/`](weights/).
-
 ### Connect an IP camera
 
 Save the camera's RTSP URL in `.runtime/camera/rtsp-url` with file permissions `0600`. Use a camera account with viewing access. Follow the [RTSP credential setup](deploy/camera/README.md#1-chạy-với-camera-ip) for the commands.
@@ -53,8 +47,6 @@ Save the camera's RTSP URL in `.runtime/camera/rtsp-url` with file permissions `
 ```bash
 python scripts/web_tools/serve_camera.py --rtsp-url-file .runtime/camera/rtsp-url
 ```
-
-Open [localhost:8003](http://127.0.0.1:8003) on the host. For access from another machine on the LAN, follow the [systemd and Caddy deployment guide](deploy/camera/README.md#3-chuẩn-bị-triển-khai).
 
 ### Simulate a camera
 
@@ -67,8 +59,6 @@ python scripts/web_tools/verify_camera.py \
   --seconds 60 --output outputs/camera_sim
 ```
 
-Open [localhost:8003](http://127.0.0.1:8003) when the terminal prints `Viewer is live`. Choose a new output directory for each run.
-
 ## Process a recorded video
 
 ```bash
@@ -77,5 +67,3 @@ python scripts/inference/run_tracking.py \
   --model-config configs/models/yolo26s_1280_openvino_fp32.json \
   --output outputs/runs/my_video
 ```
-
-The output directory contains `tracking.mp4` with boxes, IDs, and short trajectories, plus `tracks.txt` (MOTChallenge), `tracks.jsonl`, and `summary.json`.
