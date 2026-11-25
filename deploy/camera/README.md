@@ -2,7 +2,7 @@
 
 Camera dùng YOLO26s OpenVINO FP32 ở `imgsz=1280` và TrackTrack với YOLO26n-ReID. Mục tiêu là 4 FPS tracking và 30 FPS hiển thị box bằng optical flow.
 
-Để chạy trực tiếp hoặc mô phỏng, chuẩn bị [môi trường Python cho CPU](../../README.md#tạo-lại-môi-trường-cpu) bằng `requirements.txt` ở thư mục gốc.
+Để chạy trực tiếp hoặc mô phỏng, chuẩn bị [môi trường Python cho CPU](../../README.md#cpu-setup) bằng `requirements.txt` ở thư mục gốc.
 
 ## 1. Chạy với camera IP
 
@@ -59,7 +59,7 @@ sudo mkdir -m 0755 "$MOT_RELEASE" &&
   sudo install -d -m 0755 "$MOT_RELEASE/deploy" "$MOT_RELEASE/weights" &&
   sudo cp -R src scripts configs requirements.txt "$MOT_RELEASE/" &&
   sudo cp -R deploy/camera "$MOT_RELEASE/deploy/" &&
-  sudo cp -R weights "$MOT_RELEASE/weights/" &&
+  sudo cp -R weights/. "$MOT_RELEASE/weights/" &&
   sudo /usr/bin/python3.11 -m venv "$MOT_RELEASE/.venv" &&
   sudo "$MOT_RELEASE/.venv/bin/python" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu &&
   sudo "$MOT_RELEASE/.venv/bin/python" -m pip install -r "$MOT_RELEASE/requirements.txt" &&
