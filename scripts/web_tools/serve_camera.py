@@ -29,16 +29,9 @@ from mot.tracking.pipeline import FrameTracker
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rtsp-url-file", type=Path, required=True)
-    parser.add_argument("--fps", type=int, choices=(3, 4), default=3)
     parser.add_argument("--port", type=int, default=8003)
-    parser.add_argument("--pilot", action="store_true", help="Allow a profile pending acceptance")
     args = parser.parse_args()
     profile = json.loads((ROOT / "configs/profiles/camera_live.json").read_text())
-    rate = profile["rates"].get(str(args.fps))
-    if rate is None:
-        parser.error("No evaluated preset exists for the requested FPS")
-    if not rate["quality_pass"] and not args.pilot:
-        parser.error("The profile has not passed the quality gate. Use --pilot for a controlled test.")
     url = args.rtsp_url_file.read_text().strip()
     try:
         address = urlsplit(url)
@@ -55,8 +48,9 @@ def main():
         raise ValueError("ReID model checksum differs from the camera profile")
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     runtime = json.loads((ROOT / profile["runtime_config"]).read_text())
-    tracker = FrameTracker(ROOT / profile["model_config"], ROOT / rate["tracker_config"], runtime, cpu_only=True)
-    camera = Camera(partial(open_rtsp, url), tracker, args.fps)
+    tracker = FrameTracker(ROOT / profile["model_config"], ROOT / profile["tracker_config"], runtime, cpu_only=True)
+    logging.info("YOLO inference imgsz=%s; tracking target=%s FPS", tracker.options["imgsz"], profile["fps"])
+    camera = Camera(partial(open_rtsp, url), tracker, profile["fps"])
     stop = Event()
 
     def request_stop(*_):

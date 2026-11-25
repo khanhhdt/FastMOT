@@ -1,6 +1,6 @@
 # Triển khai camera IP nội bộ
 
-Bản đầu chạy một camera cố định qua RTSP trên mạng LAN. Dịch vụ dùng YOLO26s 1280 OpenVINO FP32, TrackTrack và ReID. Web hiển thị khung bao và ID từ ảnh mới nhất trong RAM. Journal lưu trạng thái kết nối và lỗi dịch vụ.
+Bản đầu chạy một camera cố định qua RTSP trên mạng LAN. Dịch vụ dùng YOLO26s OpenVINO FP32 ở `imgsz=1280`, TrackTrack và ReID, với mục tiêu tracking 4 FPS. Web hiển thị khung bao và ID từ ảnh mới nhất trong RAM. Journal lưu trạng thái kết nối và lỗi dịch vụ.
 
 ## Chạy thử trên máy hiện tại
 
@@ -10,21 +10,41 @@ Bản đầu chạy một camera cố định qua RTSP trên mạng LAN. Dịch 
 conda activate mot
 PYTHONPATH="$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
   python scripts/web_tools/serve_camera.py \
-  --rtsp-url-file .runtime/camera/rtsp-url --fps 3 --pilot
+  --rtsp-url-file .runtime/camera/rtsp-url
 ```
 
-Mở [trang xem camera](http://127.0.0.1:8003). Trang cập nhật ảnh nguồn tối đa 15 FPS ở chiều rộng không quá 1280 px; box và ID cập nhật theo preset tracking 3 hoặc 4 FPS. Box giữa hai lần tracking là vị trí đo gần nhất, được xóa nếu quá 800 ms; vị trí có thể trễ so với người đang di chuyển. Giao diện hiển thị riêng tốc độ ảnh thực nhận ở trình duyệt và tốc độ tracking. `GET /api/camera/status` trả về trạng thái, FPS thực đo, số frame đã xử lý, số frame được thay thế, tuổi ảnh gần nhất và thời gian trung bình của các bước xử lý. Tuổi ảnh dùng mốc server đã đọc xong frame, còn thời gian đọc có thể bao gồm chờ dữ liệu RTSP. `GET /api/camera/live.jpg` trả ảnh nguồn mới nhất và `GET /api/camera/frame.jpg` trả snapshot có box/ID tại frame đã tracking; cả hai dùng `ETag` hoặc trả `503` khi hết tín hiệu. Mỗi phiên ID mới có định danh riêng sau khi kết nối lại, đổi độ phân giải hoặc chuyển cảnh.
+Mở [trang xem camera](http://127.0.0.1:8003). Máy chủ gửi ảnh JPEG có box/ID trên `/api/camera/stream` với mục tiêu 30 FPS và chiều rộng không quá 1280 px. Optical flow dịch chuyển box theo từng ảnh. YOLO + TrackTrack + ReID cấp hoặc sửa ID với mục tiêu 4 FPS. Nếu kết quả tracking gần nhất cũ hơn 800 ms, ảnh hiển thị không có box. Trình duyệt đệm khoảng 100 ms lúc bắt đầu để giữ nhịp đều hơn.
 
-Nếu chưa có camera, chuẩn bị MediaMTX và FFmpeg. Lệnh dưới chạy relay, publisher và viewer trên loopback, phát video MOT17-04 ở 1080p 30 FPS, ngắt và nối lại publisher, rồi đo FPS và RAM trong 30 phút. Thư mục kết quả phải là thư mục mới. Chạy lại với `--fps 4` và thư mục khác để thử mức cao hơn.
+Giao diện hiển thị FPS ảnh vẽ trên trình duyệt, FPS optical flow tại máy chủ và FPS tracking. `GET /api/camera/status` cũng trả về số frame đã xử lý, số frame được thay thế, tuổi ảnh và thời gian trung bình ở từng bước. `GET /api/camera/live.jpg` trả ảnh hiển thị mới nhất và `GET /api/camera/frame.jpg` trả ảnh tại frame YOLO vừa tracking. Cả hai dùng `ETag` hoặc trả `503` khi hết tín hiệu. Mỗi phiên ID mới có định danh riêng sau khi kết nối lại, đổi độ phân giải hoặc chuyển cảnh.
+
+Nếu chưa có camera, chuẩn bị MediaMTX và FFmpeg. Lệnh dưới chạy relay, publisher và viewer trên loopback, phát video MOT17-04 ở 1080p 30 FPS, ngắt và nối lại publisher, rồi đo FPS và RAM trong 30 phút. Thư mục kết quả phải là thư mục mới.
 
 ```bash
 PYTHONPATH="$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
   python scripts/web_tools/verify_camera.py \
-  --mediamtx /path/to/mediamtx --fps 3 --seconds 1800 \
-  --output outputs/camera_rtsp_check_3fps
+  --mediamtx /path/to/mediamtx --seconds 1800 \
+  --output outputs/camera_rtsp_check_4fps
 ```
 
 [Phát RTSP với FFmpeg và MediaMTX](https://mediamtx.org/docs/publish/ffmpeg)
+
+### Xem optical flow bằng luồng RTSP mô phỏng
+
+Phát lại clip mô phỏng rồi mở `http://127.0.0.1:8003` khi terminal báo viewer đang chạy:
+
+```bash
+PYTHONPATH="$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
+  python scripts/web_tools/verify_camera.py \
+  --mediamtx .runtime/camera-test/mediamtx \
+  --fixture outputs/camera_demo_4fps/fixture.mp4 \
+  --seconds 180 --output outputs/camera_optical_flow_check
+```
+
+### Đo FP32, FP16 và INT8 ở imgsz 1280
+
+`scripts/experiments/benchmark_camera_precision.py --output <thư-mục-mới>` dùng cùng tracker và cùng bộ ảnh MOT17-04 lấy mẫu 4 FPS. Bài đo offline không giới hạn thông lượng; số FPS đo được bao gồm phát hiện, ghép track, đọc ảnh và xuất kết quả. Bản INT8 được hiệu chuẩn bằng NNCF trên MOT17-02 và MOT17-09. Cài `nncf==3.4.0` trong môi trường benchmark có sẵn OpenVINO và ReID.
+
+Trên i5-14400, FP32, FP16 và INT8 lần lượt đạt 4,52, 4,45 và 5,27 FPS offline. INT8 giảm HOTA 12,36 điểm và IDF1 15,58 điểm so với FP32 trên MOT17-04. Dịch vụ vẫn dùng FP32. Xem `outputs/camera_precision_comparison/comparison.json` để biết các số đo chi tiết.
 
 ### Thử WebRTC trên máy không có camera
 
@@ -35,10 +55,10 @@ PYTHONPATH="$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
   python scripts/web_tools/verify_camera.py \
   --mediamtx .runtime/camera-test/mediamtx \
   --fixture outputs/camera_smooth_4fps_resized_20261123/fixture.mp4 \
-  --webrtc --fps 4 --seconds 120 --output outputs/camera_webrtc_demo
+  --webrtc --seconds 120 --output outputs/camera_webrtc_demo
 ```
 
-Mở `http://127.0.0.1:8889/camera` để xem **video nguồn không có box** qua WebRTC ở 30 FPS. Mở `http://127.0.0.1:8003` để xem kết quả tracking có box/ID ở 4 FPS. Bài thử chỉ mở cổng trên loopback và tự dừng; WebRTC tăng độ mượt của video nguồn, không tăng tốc độ suy luận. Trang MediaMTX này chưa đi qua Caddy và chỉ dành cho thử nghiệm tại máy chạy dịch vụ.
+Mở `http://127.0.0.1:8889/camera` để xem **video nguồn không có box** qua WebRTC ở 30 FPS. Mở `http://127.0.0.1:8003` để xem ảnh có box/ID do optical flow cập nhật. Bài thử chỉ mở cổng trên loopback và tự dừng. Trang WebRTC của MediaMTX dành cho thử nghiệm tại máy chạy dịch vụ.
 
 Trong lần thử trên MOT17-04, Chrome trình bày 29,2 FPS WebRTC trong 10 giây, còn tracking đạt 3,88 FPS trong cửa sổ một phút. Nén trọng số OpenVINO sang FP16 làm tệp `.bin` giảm từ 38,0 MB xuống 19,0 MB; trên 200 frame đầu MOT17-04, FP32 camera cố định đạt 4,33 FPS và FP16 đạt 4,28 FPS. Bỏ GMC trên các sequence cố định lấy mẫu 4 FPS làm HOTA/IDF1 validation giảm 0,39/0,22 điểm và FPS validation giảm 0,10; trên nhóm development FPS tăng 0,14, nên chưa có mức tăng ổn định. Vì vậy profile triển khai vẫn dùng FP32 và GMC; các biến thể thử nghiệm nằm ở `configs/models/yolo26s_1280_openvino_fp16.json` và `configs/trackers/tracktrack_camera_fixed_4fps.yaml`. Xem số đo tại `outputs/camera_webrtc_trial/comparison.json`.
 
@@ -93,5 +113,5 @@ Muốn tạo bản mới, chạy lại `verify_hybrid_live.py` với thư mục 
 ## Nghiệm thu và quay lui
 
 - Chấm lại sau mỗi lần thay model hoặc ngưỡng tracker bằng `scripts/experiments/tune_camera_tracking.py`. Dùng kết quả OpenVINO online toàn video làm `--reference` và thư mục mới làm `--output`. Chọn cấu hình trên MOT17-02/09, chấm MOT17-04 với cùng frame và ground truth cho mỗi mức FPS. Ngưỡng chất lượng trên 04 là giảm tối đa 2 điểm HOTA và 3 điểm IDF1.
-- Trên camera thật, đo ít nhất 30 phút gồm lúc đông người và một lần mất mạng. Ở preset 3 FPS, yêu cầu ít nhất 2,9 FPS trong 95% cửa sổ một phút có tín hiệu, RAM đỉnh tối đa 1,5 GiB và khôi phục trong 15 giây sau khi camera phát lại. Đo riêng p95 từ cảnh thật đến trình duyệt bằng đồng hồ mili giây đặt trong khung hình, mục tiêu không quá 1,2 giây. Kiểm tra chạy tiếp 24 giờ, trạng thái kết nối và mức sử dụng RAM ổn định, rồi dùng `systemctl enable mot-camera`.
-- Để chuyển lên 4 FPS, tạo `/etc/mot/camera.env` với `MOT_CAMERA_FPS=4`, khởi động lại và nghiệm thu cùng tiêu chí với thông lượng tối thiểu 3,8 FPS. Nếu 4 FPS gặp vấn đề, đặt lại `MOT_CAMERA_FPS=3` và khởi động lại. Để quay về bản phát hành trước, trỏ `/opt/mot/current` về bản cũ và khởi động lại dịch vụ.
+- Trên camera thật, đo ít nhất 30 phút gồm lúc đông người và một lần mất mạng. Yêu cầu ít nhất 3,8 FPS trong 95% cửa sổ một phút có tín hiệu, RAM đỉnh tối đa 1,5 GiB và khôi phục trong 15 giây sau khi camera phát lại. Đo riêng p95 từ cảnh thật đến trình duyệt bằng đồng hồ mili giây đặt trong khung hình, mục tiêu không quá 1,2 giây. Kiểm tra chạy tiếp 24 giờ, trạng thái kết nối và mức sử dụng RAM ổn định, rồi dùng `systemctl enable mot-camera`.
+- Để quay về bản phát hành trước, trỏ `/opt/mot/current` về bản cũ, khôi phục unit systemd tương ứng và khởi động lại dịch vụ.

@@ -8,6 +8,7 @@ import math
 import os
 from pathlib import Path
 import socket
+from struct import unpack
 import subprocess
 import sys
 import time
@@ -37,6 +38,21 @@ def request(port, path, headers=None):
         connection.request("GET", path, headers=headers or {})
         response = connection.getresponse()
         return response.status, response.getheader("ETag"), response.read()
+    finally:
+        connection.close()
+
+
+def check_stream(port):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+    try:
+        connection.request("GET", "/api/camera/stream")
+        response = connection.getresponse()
+        assert response.status == 200
+        for _ in range(3):
+            length, = unpack("!I", response.read(4))
+            assert 0 < length <= 4 * 1024 * 1024
+            jpeg = response.read(length)
+            assert len(jpeg) == length and jpeg.startswith(b"\xff\xd8") and jpeg.endswith(b"\xff\xd9")
     finally:
         connection.close()
 
@@ -86,7 +102,7 @@ paths:
     publish = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-re", "-stream_loop", "-1",
                "-i", str(clip), "-an", "-c", "copy", "-f", "rtsp", "-rtsp_transport", "tcp", uri]
     serve = [sys.executable, "scripts/web_tools/serve_camera.py", "--rtsp-url-file", str(credential),
-             "--fps", str(args.fps), "--port", str(args.http_port), "--pilot"]
+             "--port", str(args.http_port)]
 
     def status():
         code, _, payload = request(args.http_port, "/api/camera/status")
@@ -116,6 +132,7 @@ paths:
                 return no_frame()
 
             wait_for(viewer_ready, 30)
+            assert request(args.http_port, "/api/camera/stream")[0] == 503
             with child(publish, output / "publisher.log"):
                 initial = wait_for(live, 30)
                 code, etag, jpeg = request(args.http_port, "/api/camera/frame.jpg")
@@ -123,6 +140,7 @@ paths:
                 assert request(args.http_port, "/api/camera/frame.jpg", {"If-None-Match": etag})[0] in (200, 304)
                 code, _, live_jpeg = request(args.http_port, "/api/camera/live.jpg")
                 assert code == 200 and live_jpeg.startswith(b"\xff\xd8")
+                check_stream(args.http_port)
                 assert request(args.http_port, "/", {"Host": "outside.invalid"})[0] == 403
                 print(f"Viewer is live at http://127.0.0.1:{args.http_port}", flush=True)
                 if args.webrtc:
@@ -133,6 +151,7 @@ paths:
                 recovered = wait_for(live, 20)
                 reconnect = round(time.monotonic() - resumed_at, 3)
                 assert recovered["session"] != initial["session"]
+                check_stream(args.http_port)
                 print(f"RTSP recovered after {reconnect:.2f} s, with fresh tracking IDs", flush=True)
                 time.sleep(3)
                 started = window_start = time.monotonic()
@@ -163,14 +182,19 @@ paths:
                     time.sleep(max(0, next_sample - time.monotonic()))
                 if args.seconds < 60:
                     windows.append(round((state["processed_frames"] - before) / (now - window_start), 3))
-    threshold = {3: 2.9, 4: 3.8}[args.fps]
+                assert state["flow_fps"] > 0, "No live optical-flow updates"
+    threshold = 3.8
     expected_windows = max(1, args.seconds // 60)
     report = {"source": "Simulated localhost RTSP, replay of MOT17-04 H.264 at 30 FPS",
-              "fps": args.fps, "seconds": args.seconds, "throughput_windows_fps": windows,
+              "fps": state["target_fps"],
+              "seconds": args.seconds, "throughput_windows_fps": windows,
               "webrtc_source_enabled": args.webrtc,
+              "display_target_fps": state["display_target_fps"],
+              "optical_flow_fps_last": state["flow_fps"],
               "display_fps_last": state["display_fps"],
-              "display_pass": state["display_fps"] >= 12,
+              "display_pass": state["display_fps"] >= 29,
               "throughput_windows_expected": expected_windows,
+              "throughput_threshold_fps": threshold,
               "throughput_pass": sum(fps >= threshold for fps in windows) / expected_windows >= 0.95,
               "service_frame_age_p95_ms": sorted(ages)[math.ceil(len(ages) * 0.95) - 1],
               "service_peak_rss_mib": round(max(memory) / 1024, 1), "stage_mean_ms": stages,
@@ -184,7 +208,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mediamtx", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--fps", type=int, choices=(3, 4), default=3)
     parser.add_argument("--seconds", type=int, default=90)
     parser.add_argument("--http-port", type=int, default=8003)
     parser.add_argument("--rtsp-port", type=int, default=8554)

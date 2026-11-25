@@ -10,17 +10,17 @@
 <body>
   <main>
     <header>
-      <h1>Camera trực tiếp</h1>
+      <h1>Live Camera</h1>
       <p id="connection" role="status">Đang kết nối</p>
     </header>
     <figure>
-      <img id="camera" alt="Luồng camera với khung bao và ID theo dõi" hidden>
-      <canvas id="overlay" aria-hidden="true" hidden></canvas>
+      <canvas id="flow-video" role="img" aria-label="Luồng camera với khung bao optical flow và ID" hidden></canvas>
       <p id="placeholder">Đang chờ hình ảnh từ camera</p>
     </figure>
     <dl>
       <div><dt>Tốc độ hiển thị</dt><dd id="display-fps">—</dd></div>
       <div><dt>Tốc độ tracking</dt><dd id="fps">—</dd></div>
+      <div><dt>Cập nhật optical flow</dt><dd id="flow-fps">—</dd></div>
       <div><dt>Tuổi khung hình tại máy chủ</dt><dd id="age">—</dd></div>
     </dl>
   </main>

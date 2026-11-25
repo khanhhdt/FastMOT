@@ -8,14 +8,13 @@ Type=simple
 User=mot
 Group=mot
 WorkingDirectory=/opt/mot/current
-Environment=MOT_CAMERA_FPS=3
 Environment=PYTHONUNBUFFERED=1
 Environment=OPENBLAS_NUM_THREADS=1
 Environment=YOLO_CONFIG_DIR=/var/lib/mot-camera/ultralytics
 Environment=MPLCONFIGDIR=/var/lib/mot-camera/matplotlib
 EnvironmentFile=-/etc/mot/camera.env
 LoadCredential=rtsp-url:/etc/mot/rtsp-url
-ExecStart=/opt/mot/current/.venv/bin/python scripts/web_tools/serve_camera.py --rtsp-url-file %d/rtsp-url --fps ${MOT_CAMERA_FPS}
+ExecStart=/opt/mot/current/.venv/bin/python scripts/web_tools/serve_camera.py --rtsp-url-file %d/rtsp-url
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=15

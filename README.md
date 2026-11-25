@@ -4,7 +4,7 @@ Theo dõi người đi bộ trong video bằng YOLO26 Detect và TrackTrack.
 
 ## Camera IP trực tiếp
 
-Chế độ live dùng YOLO26s OpenVINO FP32 + TrackTrack + ReID, với preset tracking 3 và 4 FPS; giao diện cập nhật ảnh nguồn tối đa 15 FPS để xem mượt hơn. Xem [hướng dẫn triển khai, chạy RTSP mô phỏng và nghiệm thu](deploy/camera/README.md).
+Chế độ live dùng YOLO26s OpenVINO FP32 ở `imgsz=1280` + TrackTrack + ReID, với mục tiêu tracking 4 FPS. Optical flow cập nhật box trên từng ảnh hiển thị, với mục tiêu 30 FPS. Xem [hướng dẫn triển khai, chạy RTSP mô phỏng và nghiệm thu](deploy/camera/README.md).
 
 ## Xử lý video đã ghi bằng CLI
 
