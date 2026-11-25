@@ -2,8 +2,6 @@
 
 Camera dùng YOLO26s OpenVINO FP32 ở `imgsz=1280` và TrackTrack với YOLO26n-ReID. Mục tiêu là 4 FPS tracking và 30 FPS hiển thị box bằng optical flow.
 
-Để chạy trực tiếp hoặc mô phỏng, chuẩn bị [môi trường Python cho CPU](../../README.md#cpu-setup) bằng `requirements.txt` ở thư mục gốc.
-
 ## 1. Chạy với camera IP
 
 Chạy các lệnh dưới đây từ thư mục gốc dự án.

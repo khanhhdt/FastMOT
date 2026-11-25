@@ -1,6 +1,0 @@
-{
-  "robust_gmc": true,
-  "torch_threads": 4,
-  "capture_detections": false,
-  "stationary_anchor_id": 6
-}

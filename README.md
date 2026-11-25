@@ -6,9 +6,9 @@ FastMOT tracks pedestrians from an IP camera on a CPU and shows live bounding bo
 
 ## Tracking demo
 
-[![Pedestrians with colored bounding boxes and track IDs](deploy/video/tracking-preview.jpg)](deploy/video/tracking-demo.mp4)
+![Pedestrians with colored bounding boxes and track IDs](deploy/video/tracking-demo.gif)
 
-[Watch the 10-second MP4](deploy/video/tracking-demo.mp4), captured from the live viewer stream using the [MOT17-04 sample clip](https://motchallenge.net/data/MOT17/).
+The first 10 seconds of the live tracking recording show the full camera view. [MOT17-04 source clip](https://motchallenge.net/data/MOT17/)
 
 ## Architecture
 
