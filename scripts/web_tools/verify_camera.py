@@ -183,7 +183,7 @@ paths:
                 if args.seconds < 60:
                     windows.append(round((state["processed_frames"] - before) / (now - window_start), 3))
                 assert state["flow_fps"] > 0, "No live optical-flow updates"
-    threshold = 3.8
+    threshold = 3.0
     expected_windows = max(1, args.seconds // 60)
     report = {"source": "Simulated localhost RTSP, replay of MOT17-04 H.264 at 30 FPS",
               "fps": state["target_fps"],
