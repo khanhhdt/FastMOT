@@ -1,0 +1,16 @@
+{
+  "model_config": "configs/models/yolo26s_1280_openvino_fp32.json",
+  "runtime_config": "configs/runtime/quality.json",
+  "reid_weights": "weights/yolo26n-reid.onnx",
+  "reid_sha256": "8529c383197ae4c468eda535d1b165f8b4162cf17bf5fbcff49c7cb6455bc0bb",
+  "rates": {
+    "3": {
+      "tracker_config": "configs/trackers/tracktrack_camera_3fps.yaml",
+      "quality_pass": true
+    },
+    "4": {
+      "tracker_config": "configs/trackers/tracktrack_camera_4fps.yaml",
+      "quality_pass": true
+    }
+  }
+}

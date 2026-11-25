@@ -1,1 +1,1 @@
-"""Local web application and demo packaging."""
+"""Local web applications."""

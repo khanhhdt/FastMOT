@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Camera trực tiếp · MOT</title>
+  <link rel="stylesheet" href="/camera.css">
+  <script src="/camera.js" defer></script>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Camera trực tiếp</h1>
+      <p id="connection" role="status">Đang kết nối</p>
+    </header>
+    <figure>
+      <img id="camera" alt="Luồng camera với khung bao và ID theo dõi" hidden>
+      <canvas id="overlay" aria-hidden="true" hidden></canvas>
+      <p id="placeholder">Đang chờ hình ảnh từ camera</p>
+    </figure>
+    <dl>
+      <div><dt>Tốc độ hiển thị</dt><dd id="display-fps">—</dd></div>
+      <div><dt>Tốc độ tracking</dt><dd id="fps">—</dd></div>
+      <div><dt>Tuổi khung hình tại máy chủ</dt><dd id="age">—</dd></div>
+    </dl>
+  </main>
+</body>
+</html>

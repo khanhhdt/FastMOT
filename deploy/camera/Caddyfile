@@ -1,0 +1,10 @@
+mot.home.arpa {
+	tls internal
+	basic_auth {
+		import /etc/caddy/mot-camera-users.caddy
+	}
+	reverse_proxy 127.0.0.1:8003 {
+		header_up Host 127.0.0.1:8003
+		header_up -Authorization
+	}
+}

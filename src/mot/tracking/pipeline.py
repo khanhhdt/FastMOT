@@ -1,4 +1,4 @@
-"""Run YOLO26s + TrackTrack on a local video or a MOT image sequence."""
+"""Run YOLO26 Detect + TrackTrack on a local video or a MOT image sequence."""
 
 import hashlib
 import json
@@ -25,6 +25,19 @@ from .motion import ObservedGMC, SceneObserver, reset_scene
 from .stationary import StationaryAnchor, StationaryAnchors
 
 
+def checkpoint_sha256(weights):
+    if not weights.is_dir():
+        return hashlib.sha256(weights.read_bytes()).hexdigest()
+    xml_files = list(weights.glob("*.xml"))
+    if len(xml_files) != 1:
+        raise ValueError(f"Expected one OpenVINO XML model in {weights}")
+    xml = xml_files[0]
+    digest = hashlib.sha256()
+    for path in (xml, xml.with_suffix(".bin"), weights / "metadata.yaml"):
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return digest.hexdigest()
+
+
 def extract_tracks(result, width, height):
     """Ignore unassigned detections; clip exported boxes without changing tracker state."""
     if result.boxes.id is None:
@@ -46,17 +59,89 @@ def extract_tracks(result, width, height):
     return tracks
 
 
+class FrameTracker:
+    """Own the detector, tracker callbacks and drawing state for one source."""
+
+    def __init__(self, model_config, tracker_config, runtime, *, cpu_only=False):
+        self.manifest = json.loads(model_config.read_text())
+        weights = ROOT / self.manifest["weights"]
+        self.digest = checkpoint_sha256(weights)
+        if self.digest != self.manifest["sha256"]:
+            raise ValueError(f"Checkpoint SHA-256 differs from {model_config}")
+        device = 0 if not cpu_only and torch.cuda.is_available() else "cpu"
+        self.options = {**self.manifest["inference"], "classes": [0], "device": device, "verbose": False}
+        self.tracker_config = tracker_config
+        self.runtime = runtime
+        self.visualizer = TrackVisualizer(trail_length=30)
+        self.observer = SceneObserver()
+        self.index = 0
+        self.event = "normal"
+        self.raw = None
+        torch.set_num_threads(min(4, os.cpu_count() or 1))
+        cv2.setNumThreads(1)
+        self.model = YOLO(str(weights))
+        if self.model.task != "detect":
+            raise ValueError("Expected a Detect checkpoint")
+
+    def warmup(self, width, height):
+        self.model.predict(np.zeros((height, width, 3), dtype=np.uint8), **self.options)
+        if self.model.names[0] != "person":
+            raise ValueError("Expected COCO person class 0")
+        if self.options["device"] != "cpu":
+            torch.cuda.synchronize()
+        torch.set_num_threads(self.runtime["torch_threads"])
+        self.model.add_callback("on_predict_start", self._set_threads)
+        self.model.add_callback("on_predict_postprocess_end", self._before_tracking)
+
+    def _set_threads(self, predictor):
+        torch.set_num_threads(self.runtime["torch_threads"])
+
+    @property
+    def tracker(self):
+        return self.model.predictor.trackers[0]
+
+    def reset(self):
+        self.tracker.reset()
+        self.index = 0
+        self.observer = SceneObserver()
+        self.visualizer.history.clear()
+
+    def _before_tracking(self, predictor):
+        tracker = predictor.trackers[0]
+        if self.runtime["robust_gmc"] and self.event == "scene_cut":
+            reset_scene(tracker)
+            self.visualizer.history.clear()
+        if not isinstance(tracker.gmc, ObservedGMC):
+            tracker.gmc = ObservedGMC(tracker.gmc, guarded=self.runtime["robust_gmc"])
+        tracker.gmc.event = self.event
+        if self.runtime["capture_detections"]:
+            result = predictor.results[0]
+            alternative = getattr(result, "_loose", None)
+            self.raw = {"frame": self.index, "tight": result.boxes.data.cpu().numpy().tolist(),
+                        "loose": alternative[0].boxes.data.cpu().numpy().tolist() if alternative else None,
+                        "scene_event": self.event}
+        self.captured_at = time.perf_counter()
+
+    def step(self, image, *, observe_scene=False, on_scene_cut=None):
+        self.index += 1
+        if self.runtime["robust_gmc"] or observe_scene:
+            self.event = self.observer.observe(image)
+        if self.event == "scene_cut" and on_scene_cut is not None:
+            on_scene_cut()
+        result = self.model.track(image, persist=True, tracker=str(self.tracker_config), **self.options)[0]
+        self.tracked_at = time.perf_counter()
+        if self.tracker.frame_id != self.index:
+            raise RuntimeError(f"Tracker did not advance exactly once at frame {self.index}")
+        height, width = image.shape[:2]
+        return extract_tracks(result, width, height)
+
+
 def run_tracking(source, output, max_frames=None, model_config=None, tracker_config=None,
                  runtime_config=None, progress_callback=None):
     source, output = Path(source).resolve(), Path(output).resolve()
     if output.exists() and any(output.iterdir()):
         raise FileExistsError(f"Output is not empty; choose another --output directory: {output}")
     model_config = Path(model_config or ROOT / "configs/models/yolo26s.json").resolve()
-    manifest = json.loads(model_config.read_text())
-    weights = ROOT / manifest["weights"]
-    digest = hashlib.sha256(weights.read_bytes()).hexdigest()
-    if digest != manifest["sha256"]:
-        raise ValueError("Checkpoint SHA-256 differs from configs/models/yolo26s.json")
     tracker_config = Path(tracker_config or ROOT / "configs/trackers/tracktrack.yaml").resolve()
     tracker_text = tracker_config.read_text()
     runtime = {"robust_gmc": True, "torch_threads": 4, "capture_detections": False}
@@ -89,39 +174,14 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
     hold_seconds = runtime.get("stationary_anchor_hold_seconds", 4)
     if type(hold_seconds) not in (int, float) or not math.isfinite(hold_seconds) or hold_seconds <= 0:
         raise ValueError("stationary_anchor_hold_seconds must be positive and finite")
-    options = {**manifest["inference"], "classes": [0],
-               "device": 0 if torch.cuda.is_available() else "cpu", "verbose": False}
-    torch.set_num_threads(min(4, os.cpu_count() or 1))
-    cv2.setNumThreads(1)
-    # Each call owns its model, tracker and drawing history: IDs never leak into the next source.
-    model = YOLO(str(weights))
-    if model.task != "detect" or model.names[0] != "person":
-        raise ValueError("Expected a Detect checkpoint with COCO person class 0")
-    visualizer = TrackVisualizer(trail_length=30)
+    session = FrameTracker(model_config, tracker_config, runtime)
+    options, visualizer = session.options, session.visualizer
     seen_ids = set()
     count = observations = frames_with_tracks = 0
     frames_with_features = 0
     frame_times = []
     stages = {key: 0.0 for key in ("decode", "detection", "tracking", "drawing", "export")}
-    observer, motion_events, context = SceneObserver(), [], {}
-
-    def before_tracking(predictor):
-        tracker = predictor.trackers[0]
-        if runtime["robust_gmc"] and context["event"] == "scene_cut":
-            reset_scene(tracker)
-            visualizer.history.clear()
-            motion_events.append({"frame": context["index"], "type": "scene_cut"})
-        if not isinstance(tracker.gmc, ObservedGMC):
-            tracker.gmc = ObservedGMC(tracker.gmc, guarded=runtime["robust_gmc"])
-        tracker.gmc.event = context["event"]
-        if runtime["capture_detections"]:
-            result = predictor.results[0]
-            alternative = getattr(result, "_loose", None)
-            context["raw"] = {"frame": context["index"],
-                              "tight": result.boxes.data.cpu().numpy().tolist(),
-                              "loose": alternative[0].boxes.data.cpu().numpy().tolist() if alternative else None,
-                              "scene_event": context["event"]}
-        context["captured_at"] = time.perf_counter()
+    motion_events = []
 
     with open_source(source, max_frames) as (info, frames):
         max_gap = max(1, round(info["fps"] * hold_seconds))
@@ -135,15 +195,7 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
         total = min(info["frames"], max_frames) if max_frames else info["frames"]
         if progress_callback:
             progress_callback({"phase": "warmup", "frames": 0, "total": total})
-        # Warm the detector without creating tracker state or consuming a source frame.
-        model.predict(np.zeros((height, width, 3), dtype=np.uint8), **options)
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        torch.set_num_threads(runtime["torch_threads"])
-        # Switching from predict warm-up to track rebuilds the native predictor once.
-        # Its CPU setup resets Torch threads, so apply the chosen limit after setup.
-        model.add_callback("on_predict_start", lambda predictor: torch.set_num_threads(runtime["torch_threads"]))
-        model.add_callback("on_predict_postprocess_end", before_tracking)
+        session.warmup(width, height)
         output.mkdir(parents=True, exist_ok=True)
         writer = cv2.VideoWriter(str(output / "tracking.mp4"), cv2.VideoWriter_fourcc(*"mp4v"),
                                  info["fps"], video_size)
@@ -160,25 +212,23 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
                         raise ValueError(f"Frame {index} dimensions differ from source metadata")
                     model_started = time.perf_counter()
                     stages["decode"] += model_started - frame_started
-                    context.update(index=index, event=observer.observe(image) if runtime["robust_gmc"] or anchor else "normal")
-                    result = model.track(image, persist=True, tracker=str(tracker_config), **options)[0]
-                    tracked_at = time.perf_counter()
-                    stages["detection"] += context["captured_at"] - model_started
-                    stages["tracking"] += tracked_at - context["captured_at"]
-                    tracker = model.predictor.trackers[0]
-                    if tracker.frame_id != index:
-                        raise RuntimeError(f"Tracker did not advance exactly once at frame {index}")
+                    tracks = session.step(image, observe_scene=anchor is not None)
+                    tracked_at = session.tracked_at
+                    stages["detection"] += session.captured_at - model_started
+                    stages["tracking"] += tracked_at - session.captured_at
+                    tracker = session.tracker
+                    if runtime["robust_gmc"] and session.event == "scene_cut":
+                        motion_events.append({"frame": index, "type": "scene_cut"})
                     frames_with_features += int(any(getattr(t, "curr_feat", None) is not None
                                                     for t in tracker.tracked_stracks))
-                    tracks = extract_tracks(result, width, height)
                     if anchor is not None:
-                        tracks = anchor.update(index, tracks, scene_cut=context["event"] == "scene_cut")
+                        tracks = anchor.update(index, tracks, scene_cut=session.event == "scene_cut")
                     handle.write(json.dumps({"frame": index, "tracks": tracks}, allow_nan=False) + "\n")
                     write_mot_frame(mot, index, tracks)
                     if runtime["capture_detections"]:
-                        context["raw"]["gmc_warp"] = tracker.gmc.last_warp.tolist()
-                        context["raw"]["gmc_dtype"] = str(tracker.gmc.last_warp.dtype)
-                        raw.write(json.dumps(context["raw"], allow_nan=False) + "\n")
+                        session.raw["gmc_warp"] = tracker.gmc.last_warp.tolist()
+                        session.raw["gmc_dtype"] = str(tracker.gmc.last_warp.dtype)
+                        raw.write(json.dumps(session.raw, allow_nan=False) + "\n")
                     seen_ids.update(track["id"] for track in tracks)
                     observations += len(tracks)
                     frames_with_tracks += int(bool(tracks))
@@ -230,7 +280,7 @@ def run_tracking(source, output, max_frames=None, model_config=None, tracker_con
         "reid": {"enabled": bool(tracker.args.with_reid), "model": tracker.args.model,
                  "native_features": bool(tracker.args.with_reid and tracker.args.model == "auto"),
                  "frames_with_track_features": frames_with_features},
-        "model_sha256": digest, "model_source": manifest["source"],
+        "model_sha256": session.digest, "model_source": session.manifest["source"],
         "ultralytics": ultralytics.__version__, "torch": torch.__version__,
         "video_size": list(video_size), "trail_length_frames": visualizer.trail_length,
         "coordinates": "xyxy, clipped to original image, pixels with origin (0, 0); frames start at 1",

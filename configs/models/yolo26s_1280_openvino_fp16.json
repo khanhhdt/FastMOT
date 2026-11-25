@@ -1,0 +1,25 @@
+{
+  "model": "YOLO26s OpenVINO FP16 weights",
+  "task": "detect",
+  "weights": "weights/yolo26s_fp16_openvino_model",
+  "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26s.pt",
+  "sha256": "e00a8db4bc930461c11d4a49e87e1887682189441f887fb99f1415c5ffe260be",
+  "inference": {
+    "imgsz": 1280,
+    "conf": 0.01,
+    "iou": 0.7,
+    "max_det": 1000,
+    "nms": null
+  },
+  "display_confidence": 0.25,
+  "export": {
+    "from_model": "weights/yolo26s_openvino_model",
+    "format": "openvino",
+    "precision": "FP16 weights",
+    "version": "2026.4.1",
+    "imgsz": 1280,
+    "batch": 1,
+    "dynamic": true,
+    "nms": null
+  }
+}

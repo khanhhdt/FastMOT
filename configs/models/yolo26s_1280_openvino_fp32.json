@@ -1,0 +1,27 @@
+{
+  "model": "YOLO26s OpenVINO FP32",
+  "task": "detect",
+  "weights": "weights/yolo26s_openvino_model",
+  "source": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo26s.pt",
+  "sha256": "cb5d689942dbcd6be6a2af67c72c258999575db57e359cf5a91d1ce8628bc788",
+  "training_dataset_reference_in_checkpoint": "coco.yaml",
+  "training_data_note": "COCO according to checkpoint metadata and Ultralytics documentation; image overlap with MOT17/MOT20 has not been independently audited.",
+  "inference": {
+    "imgsz": 1280,
+    "conf": 0.01,
+    "iou": 0.7,
+    "max_det": 1000,
+    "nms": null
+  },
+  "display_confidence": 0.25,
+  "export": {
+    "from_checkpoint_sha256": "646f8bc3fe0a656803d95c294f7852321748cb29d13466a1af8862e2db384a1b",
+    "format": "openvino",
+    "precision": "FP32",
+    "version": "2026.4.1-22982-e213a147257-releases/2026/4",
+    "imgsz": 1280,
+    "batch": 1,
+    "dynamic": true,
+    "nms": null
+  }
+}

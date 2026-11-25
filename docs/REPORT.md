@@ -10,7 +10,7 @@ Chạy YOLO26s ở kích thước đầu vào 640 và chấm TrackTrack với gr
 
 Thử lần lượt các ngưỡng phát hiện, tạo track và ghép track. Tăng kích thước đầu vào từ 640 lên 960 ở V1, rồi chọn 1280 cho profile `quality` ở V2 để phát hiện tốt hơn trong cảnh đông. V2 cũng bảo vệ bước bù chuyển động camera (GMC) khi gặp frame đen và đặt lại tracker khi phát hiện chuyển cảnh rõ rệt.
 
-Trên cùng **5.316 frame MOT17 train**, HOTA tăng từ **45,31% ở V1 lên 47,03% ở V2**. Số lượt bỏ sót giảm từ **51.401 xuống 48.285**. V2 có thêm profile `fast` dành cho tốc độ và giao diện tải video lên để theo dõi tiến độ, xem và tải kết quả. [Điểm V1](../outputs/mot17_full/evaluation_train/metrics.json) · [Điểm V2](../outputs/mot_full_v2/mot17/evaluation_train/metrics.json) · [Kiểm chứng V2](../outputs/improvements/verification.json)
+Trên cùng **5.316 frame MOT17 train**, HOTA tăng từ **45,31% ở V1 lên 47,03% ở V2**. Số lượt bỏ sót giảm từ **51.401 xuống 48.285**. V2 có thêm profile `fast` dành cho tốc độ. [Điểm V1](../outputs/mot17_full/evaluation_train/metrics.json) · [Điểm V2](../outputs/mot_full_v2/mot17/evaluation_train/metrics.json) · [Kiểm chứng V2](../outputs/improvements/verification.json)
 
 ## 3. Thêm ReID để ghép lại người đã mất dấu
 

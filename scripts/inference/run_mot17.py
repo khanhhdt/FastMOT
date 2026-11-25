@@ -4,7 +4,6 @@ import argparse
 import configparser
 from datetime import datetime, timezone
 import hashlib
-from html import escape
 import json
 from pathlib import Path
 from shutil import copyfile, copytree
@@ -17,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 from mot.tracking.pipeline import run_tracking
-from mot.app.demo import browser_video
+from mot.app.video import browser_video
 from mot.evaluation.metrics import evaluate_runs
 
 import cv2
@@ -139,57 +138,6 @@ def ensure_preview(run):
             pending.replace(preview)
 
 
-def write_index(output, manifest):
-    benchmark = manifest.get("benchmark", "MOT17")
-    model = json.loads((output / "configs/model.json").read_text())
-    model_label = escape(model["model"])
-    profile = escape(manifest.get("profile", "V1"))
-    sections = []
-    for split in ("train", "test"):
-        cards = []
-        for item in manifest["sequences"]:
-            if item["split"] != split or item["status"] != "complete":
-                continue
-            name = escape(item["name"])
-            folder = f"{split}/{name}"
-            fps = item.get("fps")
-            timing = f" · {fps:.2f} FPS xử lý" if fps is not None else " · Nối quỹ đạo ngoại tuyến"
-            cards.append(f'''<article><h3>{name}</h3><p>{item['frames']} frame{timing}</p>
-              <video controls muted playsinline preload="none" poster="{folder}/frame_000001.jpg" src="{folder}/preview.mp4"></video>
-              <p class="links"><a href="{folder}/preview.mp4" download>Video</a>
-              <a href="{folder}/tracks.txt" download>MOT TXT</a><a href="{folder}/tracks.jsonl" download>JSONL</a>
-              <a href="{folder}/summary.json">Thống kê</a></p></article>''')
-        if cards:
-            sections.append(f'<section id="{split}"><h2>{split.upper()}</h2><div class="grid">{"".join(cards)}</div></section>')
-    complete = sum(i["status"] == "complete" for i in manifest["sequences"])
-    metrics = '<p><a href="evaluation_train/metrics.json">Metric toàn bộ train</a></p>' if (output / "evaluation_train/metrics.json").exists() else ''
-    exports = " · ".join(f'<a href="motchallenge/{split}.zip">Tải MOT TXT {split}</a>' for split in ("train", "test")
-                         if (output / f"motchallenge/{split}.zip").exists())
-    exports = f"<p>{exports}</p>" if exports else ""
-    navigation = " · ".join(f'<a href="#{split}">{split.title()}</a>' for split in ("train", "test")
-                            if any(item["split"] == split for item in manifest["sequences"]))
-    test_note = " Tập test chỉ có kết quả dự đoán." if any(
-        item["split"] == "test" for item in manifest["sequences"]
-    ) else ""
-    dedup = ("Các ảnh DPM/FRCNN/SDP đã được đối chiếu SHA-256. Mỗi video xử lý một lần, sau đó xuất TXT theo cả ba tên."
-             if benchmark == "MOT17" else "Mỗi sequence có một video theo dõi và một tệp MOT TXT.")
-    page = output / "index.tmp"
-    page.write_text(f'''<!doctype html><html lang="vi"><meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1"><title>Toàn bộ {benchmark} · YOLO26 + TrackTrack</title>
-      <style>body{{font:16px system-ui;background:#f6f7f3;color:#203127;margin:0}}main{{max-width:1280px;margin:auto;padding:32px}}
-      h1{{font-size:36px;letter-spacing:-.03em}}h2{{margin-top:40px}}h3{{font-size:19px;margin:0}}p{{line-height:1.6}}
-      a{{color:#286242;text-underline-offset:4px}}.grid{{display:grid;grid-template-columns:1fr 1fr;gap:28px}}
-      article{{border-top:1px solid #cfd7cd;padding-top:20px}}video{{width:100%;aspect-ratio:16/9;background:#111}}
-      .links{{display:flex;gap:18px;flex-wrap:wrap}}aside{{margin-top:36px;padding-top:20px;border-top:1px solid #cfd7cd}}
-      @media(max-width:760px){{main{{padding:20px}}.grid{{grid-template-columns:1fr}}h1{{font-size:28px}}}}</style>
-      <main><p>{model_label} · {model["inference"]["imgsz"]} px · TrackTrack · {profile}</p><h1>Kết quả toàn bộ {benchmark}</h1>
-      <p>Đã hoàn tất {complete}/{len(manifest['sequences'])} video khác nhau · {manifest['unique_frames']} frame nguồn.</p>
-      <nav>{navigation} · <a href="manifest.json">Thông tin lần chạy</a></nav>
-      {metrics}{exports}{''.join(sections)}<aside><p>{dedup} ID có ý nghĩa trong từng video. FPS xử lý khác tốc độ phát.</p>
-      <p>Điểm train được chấm bằng GT cục bộ.{test_note}</p></aside></main></html>''', encoding="utf-8")
-    page.replace(output / "index.html")
-
-
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark", choices=["MOT17", "MOT20"], default="MOT17")
@@ -249,7 +197,6 @@ def main():
         temp = output / "manifest.tmp"
         temp.write_text(json.dumps(manifest, indent=2) + "\n")
         temp.replace(output / "manifest.json")
-        write_index(output, manifest)
 
     save()
     for item in manifest["sequences"]:

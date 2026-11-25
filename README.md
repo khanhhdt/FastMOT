@@ -2,18 +2,16 @@
 
 Theo dõi người đi bộ trong video bằng YOLO26 Detect và TrackTrack.
 
-## Sử dụng phiên bản cải tiến V2
+## Camera IP trực tiếp
+
+Chế độ live dùng YOLO26s OpenVINO FP32 + TrackTrack + ReID, với preset tracking 3 và 4 FPS; giao diện cập nhật ảnh nguồn tối đa 15 FPS để xem mượt hơn. Xem [hướng dẫn triển khai, chạy RTSP mô phỏng và nghiệm thu](deploy/camera/README.md).
+
+## Xử lý video đã ghi bằng CLI
+
+Chạy từ thư mục dự án và dùng thư mục đầu ra mới:
 
 ```bash
 conda activate mot
-python scripts/web_tools/serve_app.py
-```
-
-Mở [http://127.0.0.1:8002](http://127.0.0.1:8002): upload video, chọn chế độ, xem tiến độ frame, hủy khi cần, xem preview và tải MP4/MOT TXT/JSONL. Mỗi lần chạy một job; tối đa ba job đang nhận/chờ/xử lý. Kết quả và snapshot cấu hình lưu trong `outputs/web_jobs/`. Dừng bằng `Ctrl+C`; lần khởi động sau giữ kết quả hoàn tất và đánh dấu job bị ngắt để người dùng gửi lại. Server chỉ nhận kết nối localhost, video không gửi đi dịch vụ ngoài. Cần FFmpeg có `libx264` để xem preview.
-
-Chạy CLI với hai preset, dùng thư mục đầu ra mới:
-
-```bash
 python scripts/inference/run_tracking.py --source path/to/video.mp4 --profile quality --output outputs/runs/my_quality
 python scripts/inference/run_tracking.py --source path/to/video.mp4 --profile fast --output outputs/runs/my_fast
 ```
@@ -26,44 +24,22 @@ Lệnh kiểm tra:
 
 ```bash
 python -m unittest discover -s tests -v
-python scripts/web_tools/verify_app.py --output outputs/checks/app_new
 python scripts/scoring/verify_improvements.py
 ```
 
-Hai lệnh cuối lần lượt chạy inference thật qua HTTP và kiểm tra lại bằng chứng nghiệm thu đã lưu. Chạy toàn bộ MOT17 với V2 bằng `python scripts/inference/run_mot17.py --profile quality --output outputs/mot17_v2_new`; dùng tên mới để giữ kết quả V1.
+Lệnh `verify_improvements.py` kiểm tra lại bằng chứng nghiệm thu V2 đã lưu. Chạy toàn bộ MOT17 với V2 bằng `python scripts/inference/run_mot17.py --profile quality --output outputs/mot17_v2_new`; dùng tên mới để giữ kết quả V1.
 
-Các phần bước 1–6 bên dưới ghi lại **V1** và số liệu lịch sử. `outputs/demo/`, `outputs/mot17_full/`, `configs/models/yolo26s.json`, `configs/trackers/tracktrack.yaml` cùng quyết định `mot17_selected.json` vẫn giữ V1; CLI/app hiện đọc preset V2. Muốn tái hiện tracking V1, chỉ định `yolo26s_v1.json`, `tracktrack_v1.yaml` và `configs/runtime/legacy.json` qua ba cờ cấu hình, thay vì dùng preset mới.
+Các phần bên dưới ghi lại **V1** và số liệu lịch sử. `outputs/mot17_full/`, `configs/models/yolo26s.json`, `configs/trackers/tracktrack.yaml` cùng quyết định `mot17_selected.json` vẫn giữ V1; CLI hiện đọc preset V2. Muốn tái hiện tracking V1, chỉ định `yolo26s_v1.json`, `tracktrack_v1.yaml` và `configs/runtime/legacy.json` qua ba cờ cấu hình, thay vì dùng preset mới.
 
-## Chạy nhanh — bước 6
-
-Chạy từ thư mục dự án. Xem hai demo đã chuẩn bị (cảnh đường phố và cảnh đông người):
-
-```bash
-conda activate mot
-python -m http.server 8000 --bind 127.0.0.1 --directory outputs/demo
-```
-
-Mở [http://127.0.0.1:8000](http://127.0.0.1:8000). Trang demo đặt video đầu vào cạnh video có ID/quỹ đạo, cho tải kết quả tracking và xem thống kê. Đây là trang xem các clip đã xử lý; chạy video riêng bằng CLI dưới đây. Dừng server bằng `Ctrl+C`.
-
-Tạo lại demo khi chưa có `outputs/demo/` (cần FFmpeg hỗ trợ `libx264`):
-
-```bash
-python scripts/web_tools/prepare_demo.py --output outputs/demo --frames 150
-```
-
-Nếu thư mục đã có dữ liệu, chọn tên mới qua `--output` và đổi `--directory` của server theo tên đó. Lệnh tạo hai clip từ MOT17-09/04, dùng cấu hình bước 5 và lưu snapshot cấu hình; không chỉnh lại model/tracker.
-
-Chạy video của bạn:
+## Chạy video với cấu hình V1
 
 ```bash
 python scripts/inference/run_tracking.py --source /duong/dan/video.mp4 --model-config configs/models/yolo26s.json --tracker-config configs/trackers/tracktrack.yaml --output outputs/runs/my_video
 ```
 
-Kết quả chính là `tracking.mp4`, `tracks.txt`, `tracks.jsonl`, `summary.json`. Thêm `--frames 100` để thử ngắn; dùng thư mục đầu ra mới hoặc rỗng. Xem [hướng dẫn demo, codec và xử lý lỗi thường gặp](docs/DEMO.md), [cài môi trường](#tạo-lại-môi-trường-cpu) và [báo cáo kết quả](docs/REPORT.md).
+Kết quả chính là `tracking.mp4`, `tracks.txt`, `tracks.jsonl`, `summary.json`. Thêm `--frames 100` để thử ngắn; dùng thư mục đầu ra mới hoặc rỗng. Xem [cài môi trường](#tạo-lại-môi-trường-cpu) và [báo cáo kết quả](docs/REPORT.md).
 
 ## Chạy toàn bộ MOT17
-
-Các lượt chạy toàn bộ với preset `quality` V2 có trang xem chung tại [outputs/mot_full_v2](outputs/mot_full_v2/index.html). Trang từng bộ hiển thị các video đã xử lý xong. Mở bằng `python -m http.server 8003 --bind 127.0.0.1 --directory outputs/mot_full_v2`, rồi truy cập http://127.0.0.1:8003.
 
 Các lệnh batch cho hai bộ dữ liệu:
 
@@ -83,7 +59,7 @@ Profile `reid` nối sau bù camera trên MOT17-05, 10, 11 và 13. MOT17-02, 04 
 
 Dùng `--resume` nếu một lượt bị ngắt và đã có `manifest.json`. Chỉ chạy một tiến trình cho mỗi thư mục đầu ra. Các file ZIP và điểm train được xuất sau khi toàn bộ sequence của bộ đó hoàn tất.
 
-Đã có kết quả đầy đủ tại [outputs/mot17_full](outputs/mot17_full/index.html), khoảng 1,6 GB: **14 video, 11.235 frame, 42 tệp MOT**. Xem trên [localhost:8001](http://127.0.0.1:8001), tải [MOT TXT train](outputs/mot17_full/motchallenge/train.zip) hoặc [MOT TXT test](outputs/mot17_full/motchallenge/test.zip). Kiểm chứng ở [mot17_full_validation.json](outputs/checks/mot17_full_validation.json).
+Đã có kết quả đầy đủ tại `outputs/mot17_full/`, khoảng 1,6 GB: **14 video, 11.235 frame, 42 tệp MOT**. Tệp nén gồm [MOT TXT train](outputs/mot17_full/motchallenge/train.zip) và [MOT TXT test](outputs/mot17_full/motchallenge/test.zip). Kiểm chứng ở [mot17_full_validation.json](outputs/checks/mot17_full_validation.json).
 
 Để tạo một lượt chạy mới:
 
@@ -99,9 +75,8 @@ Lệnh xử lý toàn bộ 7 video train và 7 video test, tổng **11.235 frame
 - `configs/`: snapshot cấu hình; `manifest.json`: checksum ảnh, nguồn run dùng lại và tiến độ từng video.
 - `motchallenge/train/`, `motchallenge/test/`: mỗi tập có 21 tệp TXT; `train.zip`, `test.zip` chứa các tệp tương ứng.
 - `evaluation_train/`: metric trên toàn bộ 5.316 frame train có GT. Tập này gồm cả dữ liệu phát triển và giữ lại của dự án; test không có GT cục bộ để chấm.
-- `index.html`: trang xem video kết quả và tải tệp.
 
-Xem kết quả đã chuẩn bị bằng `python -m http.server 8001 --bind 127.0.0.1 --directory outputs/mot17_full`, rồi mở [http://127.0.0.1:8001](http://127.0.0.1:8001). Nếu dùng thư mục mới, thay đường dẫn server theo thư mục đó. Nếu lần chạy bị ngắt, thêm `--resume` vào lệnh chạy cùng `--output`; các video hoàn tất được giữ lại. Thư mục run mới phải rỗng. Tiến trình dùng cấu hình đã chốt, không chỉnh tham số theo kết quả toàn tập.
+Nếu lần chạy bị ngắt, thêm `--resume` vào lệnh chạy cùng `--output`; các video hoàn tất được giữ lại. Thư mục run mới phải rỗng. Tiến trình dùng cấu hình đã chốt, không chỉnh tham số theo kết quả toàn tập.
 
 Lượt chạy đã hoàn tất gồm 11 video chạy mới và 3 video dùng lại đã xác minh (MOT17-09/11/13). Metric toàn bộ train 5.316 frame: **HOTA 45,307; IDF1 54,827; MOTA 44,669; 435 lần đổi ID**. Đây là điểm trên toàn bộ train, gồm cả dữ liệu phát triển và giữ lại; không so trực tiếp với điểm giữ lại 1.650 frame ở bước 5. Test chỉ xuất dự đoán vì không có GT cục bộ.
 
@@ -281,15 +256,13 @@ Bỏ qua bước tạo env nếu `mot` đã tồn tại. Cài đặt/tải trọ
 - `src/mot/tracking/visualization.py`: vẽ ID và quỹ đạo ngắn, quản lý lịch sử hiển thị.
 - `src/mot/tracking/smoke.py` chạy kiểm tra ngắn qua lệnh `scripts/setup/smoke_test.py`.
 - `src/mot/tracking/detection.py`, `src/mot/tracking/sources.py`: detection riêng và đọc nguồn video/chuỗi ảnh.
-- `scripts/setup/` kiểm tra môi trường, `scripts/inference/` chạy video và MOT17, `scripts/scoring/` chấm điểm, `scripts/experiments/` chạy thử nghiệm và `scripts/web_tools/` quản lý các lệnh cho ứng dụng và demo.
-- `src/mot/app/` chứa API, hàng đợi xử lý và giao diện web.
+- `scripts/setup/` kiểm tra môi trường, `scripts/inference/` chạy video và MOT17, `scripts/scoring/` chấm điểm, `scripts/experiments/` chạy thử nghiệm và `scripts/web_tools/` khởi động và kiểm tra camera trực tiếp.
+- `src/mot/app/` chứa xử lý RTSP, API và giao diện xem camera.
 - `scripts/experiments/tune_tracking.py`, `configs/experiments/`: thử từng thay đổi trên tập phát triển và lưu số liệu so sánh.
-- `scripts/web_tools/prepare_demo.py`, `src/mot/app/demo.py`, `src/mot/app/demo.html`: chuẩn bị hai clip, chạy pipeline video và tạo trang xem cục bộ.
 - `scripts/inference/run_mot17.py`: chạy đầy đủ train/test, kiểm tra ảnh trùng, dùng lại run phù hợp và xuất tệp theo cả ba hậu tố.
 - `configs/`: cấu hình dataset, thông tin model và cấu hình tracker theo từng thư mục riêng.
 - `data/`, `weights/`: dữ liệu và trọng số đã tải.
 - `outputs/checks/`, `outputs/runs/`, `outputs/evaluations/`, `outputs/experiments/`: kiểm tra, dự đoán, đánh giá và so sánh cấu hình.
-- `outputs/demo/`: trang xem, video đầu vào/kết quả, tệp tracking và snapshot cấu hình của demo.
 - `docs/`: sơ đồ toàn hệ thống, cấu trúc đích và nhiệm vụ của từng module.
 
 Xem [sơ đồ và định nghĩa cấu trúc](docs/ARCHITECTURE.md).
@@ -300,6 +273,6 @@ Xem [sơ đồ và định nghĩa cấu trúc](docs/ARCHITECTURE.md).
 python -m unittest discover -s tests -v
 ```
 
-43 test dùng ảnh/video tạm và giả lập detection; các kiểm tra vòng đời tracking dùng backend TrackTrack thật, các kiểm tra metric dùng TrackEval thật. Bao gồm frame trống, reset nguồn, quỹ đạo, tọa độ MOT, tracking hoàn hảo, đổi ID, không có dự đoán, distractor, GT của đoạn ngắn và metric gộp. Bước 5 kiểm tra chuyển cấu hình, chặn tập giữ lại và đóng băng trước đánh giá cuối; bước 6 kiểm tra đóng gói video/trang demo, thiếu FFmpeg và tránh ghi đè. Công cụ chạy toàn bộ MOT17 kiểm tra ảnh trùng ở mọi frame, dữ liệu thiếu và điều kiện dùng lại run. Không tải hoặc chạy detector thật trong test; demo và các run thực nghiệm đã kiểm tra inference thực tế.
+Các test dùng ảnh/video tạm và giả lập detection; các kiểm tra vòng đời tracking dùng backend TrackTrack thật, các kiểm tra metric dùng TrackEval thật. Bao gồm frame trống, reset nguồn, quỹ đạo, tọa độ MOT, tracking hoàn hảo, đổi ID, không có dự đoán, distractor, GT của đoạn ngắn và metric gộp. Bước 5 kiểm tra chuyển cấu hình, chặn tập giữ lại và đóng băng trước đánh giá cuối. Công cụ chạy toàn bộ MOT17 kiểm tra ảnh trùng ở mọi frame, dữ liệu thiếu và điều kiện dùng lại run. Inference thực tế được kiểm tra bằng `verify_camera.py` và các run thực nghiệm.
 
 Tài liệu: [kế hoạch dự án](PROJECT_PLAN.md), [YOLO26](https://docs.ultralytics.com/models/yolo26/), [TrackTrack trong Ultralytics](https://docs.ultralytics.com/modes/track/).

@@ -2,21 +2,15 @@
 
 Thiết kế đích theo [PROJECT_PLAN.md](../PROJECT_PLAN.md), cập nhật 18/11/2026. Phạm vi: một camera, người đi bộ, YOLO26s Detect + TrackTrack.
 
-V2 bổ sung web app upload và xử lý video thật trên máy, dùng chung pipeline với CLI. Trang hai demo và bộ kết quả toàn MOT17 cũ được giữ riêng như đầu ra V1. Inference chạy trong Python, trình duyệt tải video kết quả H.264.
+Video đã ghi và chuỗi ảnh được xử lý bằng CLI. Dịch vụ camera nhận luồng RTSP và cung cấp giao diện xem trực tiếp qua Caddy trên mạng LAN. Xem [hướng dẫn triển khai camera](../deploy/camera/README.md).
 
 ```mermaid
 flowchart LR
-    U["Upload video · trình duyệt"] --> A["HTTP localhost · kiểm tra tệp"]
-    A --> Q["Lưu job + snapshot cấu hình · hàng đợi một worker"]
-    C["CLI · video hoặc ảnh MOT"] --> P
-    Q --> P["Pipeline · preset quality/fast"]
+    C["CLI · video hoặc ảnh MOT"] --> P["Pipeline · preset quality/fast"]
     P --> D["Đọc frame → YOLO26 Detect"]
     D --> T["TrackTrack · GMC có bảo vệ · ID"]
     T --> O["Vẽ → MP4 + MOT TXT + JSONL + summary"]
-    P -. "Frame thực xử lý" .-> S["Job JSON · tiến độ/hủy/lỗi"]
-    S -.-> U
-    O --> V["FFmpeg → preview H.264"]
-    V --> R["Xem và tải kết quả"]
+    O --> V["Batch · FFmpeg xuất preview H.264"]
     O --> E["TrackEval · chỉ khi có GT"]
     G["GT · MOT17/MOT20"] --> E
     E --> M["HOTA/IDF1/FN/FP/IDSW + phân tích lỗi"]
@@ -26,18 +20,18 @@ Tệp mới của V2:
 
 - `src/mot/tracking/motion.py`: phát hiện frame thiếu tín hiệu/chuyển cảnh mạnh, kiểm tra warp GMC và reset track không dùng lại ID.
 - `src/mot/tracking/replay.py` và `src/mot/evaluation/failure_analysis.py` hỗ trợ tìm tham số từ cache và giải trình FN/FP.
-- `src/mot/app/` quản lý job, API localhost và giao diện upload, tiến độ, hủy, preview, tải file.
+- `src/mot/app/` đọc luồng RTSP, theo dõi và phục vụ giao diện camera.
 - `configs/profiles/`, `configs/runtime/`: hai preset và tùy chọn bảo vệ GMC/số luồng/capture. Model/tracker V2 có tệp riêng; các tệp gốc V1 được giữ nguyên.
 - `scripts/experiments/` chạy và chọn cấu hình trên tập phát triển, đo tốc độ và đóng băng cấu hình.
 - `scripts/scoring/` chấm GT, phân tích lỗi và đối chiếu sáu tiêu chí.
-- `scripts/web_tools/` khởi động app, kiểm tra HTTP và tạo lại hai demo.
-- `outputs/improvements/`: baseline/candidate, tìm tham số, regression, benchmark, cấu hình đóng băng, kết quả MOT20 và nghiệm thu. `outputs/web_jobs/<id>/` chứa input, `configs/`, `job.json` và `result/` của từng lần upload.
+- `scripts/web_tools/` khởi động dịch vụ camera và kiểm tra bằng RTSP mô phỏng.
+- `outputs/improvements/`: baseline/candidate, tìm tham số, regression, benchmark, cấu hình đóng băng, kết quả MOT20 và nghiệm thu.
 
 ## 1. Luồng từ input đến output
 
 ```mermaid
 flowchart TD
-    IN["INPUT: video hoặc chuỗi ảnh MOT17/MOT20"] --> ENTRY["Lệnh chạy hoặc giao diện demo"]
+    IN["INPUT: video hoặc chuỗi ảnh MOT17/MOT20"] --> ENTRY["Lệnh chạy CLI"]
     DATA["Cấu hình dữ liệu: nguồn, sequence, split"] -.-> ENTRY
     ENTRY --> READ["Đọc lần lượt từng khung hình và FPS"]
 
@@ -63,9 +57,7 @@ flowchart TD
     ERRORS --> REPORT
     METRICS --> REPORT["Báo cáo chất lượng, tốc độ và các lỗi tracking"]
     SUMMARY --> REPORT
-    VIDEO --> PREVIEW["H.264 preview cho trình duyệt"]
-    PREVIEW --> DEMO["Trang demo cục bộ: input/output và tải kết quả"]
-    TXT --> DEMO
+    VIDEO --> PREVIEW["Batch: tệp preview H.264"]
 ```
 
 - YOLO26 trả lời người đang ở đâu; TrackTrack nối người đó với ID trong lịch sử.
@@ -88,8 +80,7 @@ MOT/
 │
 ├── docs/
 │   ├── ARCHITECTURE.md              # Sơ đồ và định nghĩa cấu trúc này
-│   ├── DEMO.md                     # Xem/tạo demo, chạy video riêng và xử lý lỗi
-│   └── REPORT.md                   # Baseline, cải thiện, tập giữ lại và kiểm chứng demo
+│   └── REPORT.md                   # Baseline, cải thiện và tập giữ lại
 │
 ├── configs/
 │   ├── datasets/
@@ -125,11 +116,10 @@ MOT/
 │       │   └── failure_analysis.py # Phân tích FN/FP từ detection và GT
 │       └── app/
 │           ├── __init__.py
-│           ├── jobs.py             # Hàng đợi, tiến độ, hủy và lưu trạng thái
-│           ├── web.py              # API localhost và phục vụ giao diện
-│           ├── webui/              # index.html, app.js, style.css
-│           ├── demo.py             # Tạo clip demo và chuyển preview sang H.264
-│           └── demo.html           # Template của trang demo
+│           ├── camera.py           # Đọc RTSP và cập nhật tracking
+│           ├── camera_web.py       # API trạng thái, ảnh và giao diện camera
+│           ├── camera_ui/          # index.html, camera.js, camera.css
+│           └── video.py            # Chuyển preview sang H.264
 │
 ├── scripts/
 │   ├── setup/
@@ -151,16 +141,14 @@ MOT/
 │   │   ├── benchmark_profiles.py
 │   │   └── freeze_profiles.py
 │   └── web_tools/
-│       ├── serve_app.py
-│       ├── verify_app.py
-│       └── prepare_demo.py
+│       ├── serve_camera.py
+│       └── verify_camera.py
 │
 ├── tests/
 │   ├── test_detection.py           # Kiểm tra nguồn ảnh/video, confidence và export
 │   ├── test_tracking.py            # Vòng đời ID, frame trống, quỹ đạo và reset nguồn
 │   ├── test_evaluation.py          # MOT, metric, GT đoạn ngắn, distractor và clip
 │   ├── test_tuning.py              # Chặn tập giữ lại, một thay đổi và quy tắc xếp hạng
-│   ├── test_demo.py                # Đóng gói hai clip, snapshot, liên kết và tránh ghi đè
 │   └── test_batch.py               # Đủ train/test, ảnh trùng mọi frame và điều kiện dùng lại run
 │
 ├── data/
@@ -189,19 +177,12 @@ MOT/
 │   │       └── summary.json        # Cấu hình, trọng số và thống kê lần chạy
 │   ├── experiments/                # Kế hoạch, cấu hình, run và metric từng phép thử
 │   ├── mot17_full/
-│   │   ├── index.html              # Trang xem toàn bộ video đã hoàn tất
 │   │   ├── manifest.json           # Tiến độ, SHA ảnh, xuất xứ run dùng lại và thống kê
 │   │   ├── configs/                # Snapshot model/tracker dùng chung cho cả lượt chạy
 │   │   ├── train/                  # 7 sequence không lặp; mỗi sequence có video/MOT/JSONL
 │   │   ├── test/                   # 7 sequence không lặp; không có GT cục bộ
 │   │   ├── motchallenge/           # TXT theo cả 3 hậu tố, train.zip và test.zip
 │   │   └── evaluation_train/       # Metric toàn bộ train, gồm cả phát triển và giữ lại
-│   ├── demo/
-│   │   ├── index.html              # Trang xem kết quả cục bộ
-│   │   ├── manifest.json           # Nguồn clip, phạm vi frame và FPS của demo
-│   │   ├── configs/                # Snapshot model/tracker thực chạy
-│   │   ├── street/                 # Video input và result/ của MOT17-09
-│   │   └── crowd/                  # Video input và result/ của MOT17-04
 │   └── evaluations/
 │       └── baseline_mot17/
 │           ├── metrics.json        # Metric, FPS, phần cứng và phạm vi frame/split
@@ -224,7 +205,7 @@ MOT/
 - **`metrics.py` chấm kết quả** bằng TrackEval sau khi kiểm tra cấu hình và chuẩn bị GT đúng số frame. Kết quả gồm điểm từng sequence và điểm gộp.
 - **`tune_tracking.py` thử tham số:** chỉ dùng các đoạn phát triển đã khai báo, mỗi biến thể thay một tham số của cấu hình cha. Lưu snapshot cấu hình và metric trước khi chọn cấu hình cho phép thử tiếp theo. Chế độ `--finalize-study` kiểm tra trên các đoạn phát triển còn lại, gộp điểm để chọn, lưu cấu hình/checksum rồi mới chạy tập giữ lại; không dùng điểm giữ lại để thay lựa chọn.
 - **`diagnostics.py` giải thích lỗi:** dùng dữ liệu đã tiền xử lý, ghép theo CLEAR ở IoU 0.5 và đối chiếu tổng lỗi với evaluator trước khi tạo clip. Nhãn G/T trong clip là ID đã chuẩn hóa của TrackEval.
-- **`demo.py` chuẩn bị minh họa:** tạo video ngắn từ MOT17-09/04, chạy đúng pipeline video, chuyển preview sang H.264 bằng FFmpeg và xuất HTML cùng các liên kết tải. Không chấm GT hay điều chỉnh model; FPS pipeline không tính chuyển codec. `demo.html` chỉ hiển thị clip đã xử lý, không cần framework hoặc dịch vụ ngoài.
+- **`video.py` tạo preview:** chuyển video tracking sang H.264 bằng FFmpeg cho batch. FPS pipeline không tính thời gian chuyển codec.
 - **`run_mot17.py` điều phối toàn bộ dữ liệu:** kiểm tra SHA-256 mọi ảnh giữa DPM/FRCNN/SDP, chạy mỗi video một lần với cấu hình snapshot hoặc dùng lại run đầy đủ phù hợp. Sau khi xác minh số frame và xuất H.264, lưu kết quả theo sequence, xuất TXT cho cả ba tên và chấm toàn bộ train. Các bản hậu tố dùng chung kết quả vì ảnh đã được xác nhận giống hệt nhau; pipeline không đọc public detections của dataset.
 - **`configs/` mô tả cấu hình và nguồn model:** detection/tracking nạp `models/yolo26s.json` để kiểm tra trọng số và lấy inference; tracking còn nạp `trackers/tracktrack.yaml`. Ngưỡng hiển thị trong cấu hình model chỉ dùng cho detection. Lệnh smoke test vẫn dùng các giá trị riêng trong mã chạy thử.
 - **`data/` và `weights/` là đầu vào tải về; `outputs/` là dữ liệu sinh ra; `docs/` là tài liệu đọc và duy trì cùng mã nguồn.**
@@ -235,7 +216,7 @@ MOT/
 2. **Bước 2–3:** đã có detection, nguồn đọc chung, tracking đầy đủ và quỹ đạo qua `pipeline.py`, `visualization.py`, `run_tracking.py`.
 3. **Bước 4:** đã có xuất MOT, đánh giá, đo tốc độ và 5 clip lỗi; kết quả trong `docs/REPORT.md`.
 4. **Bước 5:** đã thử 12 cấu hình, kiểm tra/chốt trên tập phát triển và đánh giá hai video giữ lại bằng `tune_tracking.py`; mặc định đã cập nhật. Giữ cấu hình bước 4 tại `yolo26s_baseline.json` và `tracktrack_baseline.yaml`; quyết định chọn trong `mot17_selected.json`.
-5. **Bước 6:** đã có hai clip thực chạy, trang xem cục bộ, tải kết quả và hướng dẫn trong `docs/DEMO.md`; báo cáo cuối đã cập nhật.
+5. **Bước 6:** kết quả kiểm chứng nằm trong `docs/REPORT.md`. CLI xuất video và tệp tracking để xem trực tiếp từ thư mục kết quả.
 
 Không tạo module rỗng cho các phần dự kiến. Các lệnh hiện có:
 
@@ -246,6 +227,4 @@ python scripts/setup/smoke_test.py --frames 100
 python scripts/inference/run_detection.py --frames 100 --output outputs/runs/detection_demo
 python scripts/inference/run_tracking.py --frames 100 --output outputs/runs/tracking_demo
 python scripts/scoring/evaluate.py --runs outputs/runs/tracking_demo --output outputs/evaluations/tracking_demo
-python scripts/web_tools/prepare_demo.py --output outputs/demo_new
-python -m http.server 8000 --bind 127.0.0.1 --directory outputs/demo_new
 ```

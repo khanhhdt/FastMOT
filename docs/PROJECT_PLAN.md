@@ -2,14 +2,14 @@
 
 ## Cải tiến V2 — sáu vấn đề cần nghiệm thu
 
-Giữ nguyên YOLO26 **Detect** + TrackTrack. CLI và web app đọc `configs/profiles/{quality,fast}.json`; những trạng thái bước 1–6 bên dưới là lịch sử V1, không thay thế phép nghiệm thu V2.
+Giữ nguyên YOLO26 **Detect** + TrackTrack. CLI đọc `configs/profiles/{quality,fast}.json`. Những trạng thái bước 1–6 bên dưới là lịch sử V1, không thay thế phép nghiệm thu V2.
 
 1. **Bỏ sót:** phân tích cache detection so với GT theo kích thước người; tăng độ phân giải và chọn lại tham số trên đúng 1.625 frame phát triển. Đạt khi FN giảm ít nhất 3%, HOTA không giảm và giải trình đủ tổng FN.
 2. **Dự đoán thừa:** phối hợp ngưỡng tạo track và số frame xác nhận. Đạt khi FP giảm ít nhất 5%, recall không giảm quá một điểm phần trăm.
 3. **Giữ ID:** bảo vệ GMC khi frame đen/ước lượng sai, giữ bộ đếm ID khi reset do chuyển cảnh mạnh. Đạt khi IDSW không tăng, IDF1 không giảm và regression frame đen/chuyển cảnh qua kiểm tra.
 4. **Tốc độ CPU:** tách preset nhanh/chất lượng, đặt đúng số luồng và đo từng công đoạn. Đạt khi bản nhanh có ít nhất 15 FPS, nhanh hơn V1 ít nhất 1,5 lần, HOTA giảm không quá 8 điểm so với chất lượng. Báo riêng mục tiêu 30 FPS.
 5. **Tổng quát hóa:** đóng băng cấu hình/checksum trước khi chấm MOT20-01 toàn bộ 429 frame và MOT20-03 frame 1–300. Đạt khi HOTA V2 không thấp hơn baseline quá 0,5 điểm trên cùng cửa sổ. Không chỉnh theo MOT20; MOT17-11/13 đã được xem ở V1 nên không gọi là dữ liệu mới.
-6. **Ứng dụng:** upload video thật → hàng đợi một worker → tiến độ → preview/tải file; hỗ trợ lỗi, hủy và restart. Đạt khi kiểm tra API với inference thật và Chrome desktop/mobile đều thành công.
+6. **Ứng dụng (nghiệm thu V2 trước đây):** upload video thật, xử lý qua một worker và hỗ trợ tiến độ, preview, tải tệp, hủy và restart. Tiêu chí này áp dụng cho lần nghiệm thu lịch sử; hiện video đã ghi dùng CLI và giao diện web phục vụ [camera IP](../deploy/camera/README.md).
 
 Ngưỡng nằm tại [six_issues_v2.json](configs/experiments/six_issues_v2.json); kết luận và giới hạn tại [IMPROVEMENTS.md](docs/IMPROVEMENTS.md). Đạt ngưỡng trên cửa sổ kiểm tra không có nghĩa đã hết lỗi hoặc đạt SOTA. Các đầu ra toàn bộ MOT17 trước đây vẫn là V1.
 
@@ -106,20 +106,20 @@ ID là mã theo dõi trong video, không phải danh tính thật của người
 
 **Hoàn thành khi:** người khác có thể làm theo README để chạy lại demo.
 
-**Trạng thái 18/11/2026:** hoàn thành. Đã có `scripts/web_tools/prepare_demo.py` tạo hai clip 150 frame từ MOT17-09/04, chạy pipeline trên video và xuất trang xem input/output tại `outputs/demo/index.html`. Video H.264 phát được trên Chrome, có tải MOT/JSONL và snapshot cấu hình. Đã kiểm tra đủ frame, 17 liên kết tài nguyên, bố cục desktop/mobile và 39 test đạt. README có lệnh xem demo, tạo lại và chạy video riêng; [hướng dẫn demo](docs/DEMO.md), [báo cáo cuối](docs/REPORT.md). Phạm vi giao diện hiện là xem kết quả đã xử lý sẵn; inference được chạy bằng CLI.
+**Trạng thái 18/11/2026:** hoàn thành. Hai clip 150 frame từ MOT17-09/04 đã được dùng để kiểm chứng video H.264 trên Chrome, tải MOT/JSONL và snapshot cấu hình. Đã kiểm tra đủ frame, 17 liên kết tài nguyên, bố cục desktop/mobile và 39 test đạt. Trang tĩnh đã được gỡ. README hướng dẫn chạy video bằng CLI. Xem [báo cáo cuối](REPORT.md).
 
 ## 4. Tiêu chí hoàn thành dự án
 
 - [x] Chạy được toàn bộ video với YOLO26 + TrackTrack. Đã có toàn bộ 14 video MOT17 train/test, 11.235 frame không lặp ba hậu tố; bộ đếm tracker và video khớp số frame nguồn. Bản H.264 cũng được đọc lại đủ frame; xem [kiểm chứng toàn bộ dữ liệu](outputs/checks/mot17_full_validation.json).
 - [x] Xuất được video có khung bao, ID, quỹ đạo và tệp kết quả tracking. Đã kiểm tra video, preview, MOT TXT/JSONL từng frame, ID/tọa độ và các test hiển thị/quỹ đạo.
 - [x] Có đánh giá định lượng trên dữ liệu có nhãn, ghi rõ giới hạn nếu mô hình từng học dữ liệu đó. Chấm lại bằng TrackEval trên 1.650 frame giữ lại cho kết quả khớp: HOTA 46,936, IDF1 55,919; GT gốc và prediction khớp checksum. Checkpoint tham chiếu COCO; chưa xác minh độc lập trùng ảnh với MOT17.
-- [x] Có cấu hình, phiên bản thư viện và hướng dẫn chạy lại. Cấu hình/trọng số khớp checksum; 43 phiên bản khớp `requirements.txt`, `pip check` đạt; README, hướng dẫn demo và các liên kết tài nguyên đã kiểm tra.
+- [x] Có cấu hình, phiên bản thư viện và hướng dẫn chạy lại. Cấu hình/trọng số khớp checksum; 43 phiên bản khớp `requirements.txt`, `pip check` đạt.
 
 **Xác minh 18/11/2026:** đạt **4/4 tiêu chí bàn giao trong phạm vi MOT17**, có **39 test đạt**. Bằng chứng tại [project_verification.json](outputs/checks/project_verification.json), [kết quả chấm lại](outputs/evaluations/completion_verification/metrics.json) và [log test](outputs/checks/completion_tests.log).
 
-**Giới hạn nghiệm thu:** mục tiêu giữ ID khi đông người/che khuất mới đạt một phần: còn 95 lần đổi ID, 8.801 lượt bỏ sót và 2.676 dự đoán thừa trên tập giữ lại; case frame đen vẫn mất ID. Tốc độ CPU 6,726 FPS; kế hoạch chưa đặt ngưỡng HOTA/IDF1/FPS tối thiểu để nghiệm thu chất lượng. MOT20 chưa được bổ sung. Tập giữ lại thuộc `MOT17/train`; giao diện là trang xem demo đã xử lý, inference chạy CLI. Đã kiểm tra môi trường hiện có, chưa cài mới toàn bộ trên máy khác.
+**Giới hạn nghiệm thu:** mục tiêu giữ ID khi đông người/che khuất mới đạt một phần: còn 95 lần đổi ID, 8.801 lượt bỏ sót và 2.676 dự đoán thừa trên tập giữ lại; case frame đen vẫn mất ID. Tốc độ CPU 6,726 FPS; kế hoạch chưa đặt ngưỡng HOTA/IDF1/FPS tối thiểu để nghiệm thu chất lượng. Ở thời điểm nghiệm thu, MOT20 chưa được bổ sung và tập giữ lại thuộc `MOT17/train`. Đã kiểm tra môi trường hiện có, chưa cài mới toàn bộ trên máy khác.
 
-**Đầu ra toàn bộ MOT17 bổ sung 18/11/2026:** đã xuất 7 video train/5.316 frame và 7 video test/5.919 frame, đủ 42 tên MOT TXT theo DPM/FRCNN/SDP; mọi ảnh trùng đã đối chiếu SHA-256. Có trang xem 14 video, ZIP train/test và metric toàn bộ train. Công cụ batch có 43 test đạt. Kết quả tại [outputs/mot17_full](outputs/mot17_full/index.html); chi tiết trong [báo cáo](docs/REPORT.md).
+**Đầu ra toàn bộ MOT17 bổ sung 18/11/2026:** đã xuất 7 video train/5.316 frame và 7 video test/5.919 frame, đủ 42 tên MOT TXT theo DPM/FRCNN/SDP; mọi ảnh trùng đã đối chiếu SHA-256. ZIP train/test và metric toàn bộ train nằm tại `outputs/mot17_full/`. Công cụ batch có 43 test đạt. Xem chi tiết trong [báo cáo](REPORT.md).
 
 ## 5. Tài liệu sử dụng
 
