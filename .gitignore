@@ -1,7 +1,7 @@
 data/
-weights/
 outputs/
 tests/
+docs/
 .runtime/
 __pycache__/
 *.pyc

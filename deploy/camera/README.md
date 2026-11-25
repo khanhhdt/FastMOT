@@ -1,117 +1,121 @@
 # Triển khai camera IP nội bộ
 
-Bản đầu chạy một camera cố định qua RTSP trên mạng LAN. Dịch vụ dùng YOLO26s OpenVINO FP32 ở `imgsz=1280`, TrackTrack và ReID, với mục tiêu tracking 4 FPS. Web hiển thị khung bao và ID từ ảnh mới nhất trong RAM. Journal lưu trạng thái kết nối và lỗi dịch vụ.
+Camera dùng YOLO26s OpenVINO FP32 ở `imgsz=1280` và TrackTrack với YOLO26n-ReID. Mục tiêu là 4 FPS tracking và 30 FPS hiển thị box bằng optical flow.
 
-## Chạy thử trên máy hiện tại
+Để chạy trực tiếp hoặc mô phỏng, chuẩn bị [môi trường Python cho CPU](../../README.md#tạo-lại-môi-trường-cpu) bằng `requirements.txt` ở thư mục gốc.
 
-Đặt URL RTSP vào một tệp quyền `0600` trong `.runtime/camera/`. Khi thử từ env `mot` với các runtime đã dùng để benchmark, chạy từ thư mục dự án.
+## 1. Chạy với camera IP
+
+Chạy các lệnh dưới đây từ thư mục gốc dự án.
+
+1. Lấy URL RTSP của camera và dùng tài khoản chỉ có quyền xem luồng. Ví dụ URL có dạng `rtsp://viewer:PASSWORD@192.168.1.50:554/stream`.
+
+2. Tạo tệp cấu hình và giới hạn quyền đọc, sửa cho chủ sở hữu tệp.
+
+   ```bash
+   mkdir -p .runtime/camera
+   touch .runtime/camera/rtsp-url
+   chmod 600 .runtime/camera/rtsp-url
+   nano .runtime/camera/rtsp-url
+   ```
+
+   Dán URL RTSP vào một dòng duy nhất. Nhấn `Ctrl+O`, `Enter` để lưu rồi `Ctrl+X` để thoát.
+
+3. Khởi động trang camera.
+
+   ```bash
+   python scripts/web_tools/serve_camera.py \
+     --rtsp-url-file .runtime/camera/rtsp-url
+   ```
+
+4. Mở [localhost:8003](http://127.0.0.1:8003) để xem ảnh, box, ID và các chỉ số FPS.
+
+## 2. Chạy mô phỏng
+
+Cần FFmpeg, MediaMTX và clip mẫu. Lệnh dưới phát clip qua RTSP trên localhost, thử ngắt và nối lại luồng, rồi chạy tiếp trong 3 phút.
 
 ```bash
-conda activate mot
-PYTHONPATH="$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
-  python scripts/web_tools/serve_camera.py \
-  --rtsp-url-file .runtime/camera/rtsp-url
-```
 
-Mở [trang xem camera](http://127.0.0.1:8003). Máy chủ gửi ảnh JPEG có box/ID trên `/api/camera/stream` với mục tiêu 30 FPS và chiều rộng không quá 1280 px. Optical flow dịch chuyển box theo từng ảnh. YOLO + TrackTrack + ReID cấp hoặc sửa ID với mục tiêu 4 FPS. Nếu kết quả tracking gần nhất cũ hơn 800 ms, ảnh hiển thị không có box. Trình duyệt đệm khoảng 100 ms lúc bắt đầu để giữ nhịp đều hơn.
-
-Giao diện hiển thị FPS ảnh vẽ trên trình duyệt, FPS optical flow tại máy chủ và FPS tracking. `GET /api/camera/status` cũng trả về số frame đã xử lý, số frame được thay thế, tuổi ảnh và thời gian trung bình ở từng bước. `GET /api/camera/live.jpg` trả ảnh hiển thị mới nhất và `GET /api/camera/frame.jpg` trả ảnh tại frame YOLO vừa tracking. Cả hai dùng `ETag` hoặc trả `503` khi hết tín hiệu. Mỗi phiên ID mới có định danh riêng sau khi kết nối lại, đổi độ phân giải hoặc chuyển cảnh.
-
-Nếu chưa có camera, chuẩn bị MediaMTX và FFmpeg. Lệnh dưới chạy relay, publisher và viewer trên loopback, phát video MOT17-04 ở 1080p 30 FPS, ngắt và nối lại publisher, rồi đo FPS và RAM trong 30 phút. Thư mục kết quả phải là thư mục mới.
-
-```bash
-PYTHONPATH="$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
-  python scripts/web_tools/verify_camera.py \
-  --mediamtx /path/to/mediamtx --seconds 1800 \
-  --output outputs/camera_rtsp_check_4fps
-```
-
-[Phát RTSP với FFmpeg và MediaMTX](https://mediamtx.org/docs/publish/ffmpeg)
-
-### Xem optical flow bằng luồng RTSP mô phỏng
-
-Phát lại clip mô phỏng rồi mở `http://127.0.0.1:8003` khi terminal báo viewer đang chạy:
-
-```bash
-PYTHONPATH="$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
-  python scripts/web_tools/verify_camera.py \
+python scripts/web_tools/verify_camera.py \
   --mediamtx .runtime/camera-test/mediamtx \
-  --fixture outputs/camera_demo_4fps/fixture.mp4 \
-  --seconds 180 --output outputs/camera_optical_flow_check
+  --fixture deploy/video/fixture.mp4 \
+  --seconds 180 --output outputs/camera_sim
 ```
 
-### Đo FP32, FP16 và INT8 ở imgsz 1280
+Mở [localhost:8003](http://127.0.0.1:8003) khi terminal báo `Viewer is live`.
 
-`scripts/experiments/benchmark_camera_precision.py --output <thư-mục-mới>` dùng cùng tracker và cùng bộ ảnh MOT17-04 lấy mẫu 4 FPS. Bài đo offline không giới hạn thông lượng; số FPS đo được bao gồm phát hiện, ghép track, đọc ảnh và xuất kết quả. Bản INT8 được hiệu chuẩn bằng NNCF trên MOT17-02 và MOT17-09. Cài `nncf==3.4.0` trong môi trường benchmark có sẵn OpenVINO và ReID.
+## 3. Chuẩn bị triển khai
 
-Trên i5-14400, FP32, FP16 và INT8 lần lượt đạt 4,52, 4,45 và 5,27 FPS offline. INT8 giảm HOTA 12,36 điểm và IDF1 15,58 điểm so với FP32 trên MOT17-04. Dịch vụ vẫn dùng FP32. Xem `outputs/camera_precision_comparison/comparison.json` để biết các số đo chi tiết.
+Chạy trên máy chủ Linux có systemd, quyền `sudo`, Python 3.11 có `venv` và [Caddy chạy bằng systemd](https://caddyserver.com/docs/running#linux-service).
 
-### Thử WebRTC trên máy không có camera
+### 3.1. Chép bản phát hành vào `/opt`
 
-Chạy từ thư mục dự án với MediaMTX đã đặt tại `.runtime/camera-test/mediamtx`. Có thể bỏ `--fixture` để mã hóa lại MOT17-04 từ ảnh gốc. Mỗi lần chạy chọn `--output` mới.
+Chọn phiên bản chưa tồn tại, ví dụ `v1`.
 
 ```bash
-PYTHONPATH="$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
-  python scripts/web_tools/verify_camera.py \
-  --mediamtx .runtime/camera-test/mediamtx \
-  --fixture outputs/camera_smooth_4fps_resized_20261123/fixture.mp4 \
-  --webrtc --seconds 120 --output outputs/camera_webrtc_demo
+MOT_RELEASE=/opt/mot/releases/v1
+sudo install -d -m 0755 /opt/mot/releases
+sudo mkdir -m 0755 "$MOT_RELEASE" &&
+  sudo install -d -m 0755 "$MOT_RELEASE/deploy" "$MOT_RELEASE/weights" &&
+  sudo cp -R src scripts configs requirements.txt "$MOT_RELEASE/" &&
+  sudo cp -R deploy/camera "$MOT_RELEASE/deploy/" &&
+  sudo cp -R weights "$MOT_RELEASE/weights/" &&
+  sudo /usr/bin/python3.11 -m venv "$MOT_RELEASE/.venv" &&
+  sudo "$MOT_RELEASE/.venv/bin/python" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu &&
+  sudo "$MOT_RELEASE/.venv/bin/python" -m pip install -r "$MOT_RELEASE/requirements.txt" &&
+  sudo ln -sfnT "$MOT_RELEASE" /opt/mot/current
 ```
 
-Mở `http://127.0.0.1:8889/camera` để xem **video nguồn không có box** qua WebRTC ở 30 FPS. Mở `http://127.0.0.1:8003` để xem ảnh có box/ID do optical flow cập nhật. Bài thử chỉ mở cổng trên loopback và tự dừng. Trang WebRTC của MediaMTX dành cho thử nghiệm tại máy chạy dịch vụ.
-
-Trong lần thử trên MOT17-04, Chrome trình bày 29,2 FPS WebRTC trong 10 giây, còn tracking đạt 3,88 FPS trong cửa sổ một phút. Nén trọng số OpenVINO sang FP16 làm tệp `.bin` giảm từ 38,0 MB xuống 19,0 MB; trên 200 frame đầu MOT17-04, FP32 camera cố định đạt 4,33 FPS và FP16 đạt 4,28 FPS. Bỏ GMC trên các sequence cố định lấy mẫu 4 FPS làm HOTA/IDF1 validation giảm 0,39/0,22 điểm và FPS validation giảm 0,10; trên nhóm development FPS tăng 0,14, nên chưa có mức tăng ổn định. Vì vậy profile triển khai vẫn dùng FP32 và GMC; các biến thể thử nghiệm nằm ở `configs/models/yolo26s_1280_openvino_fp16.json` và `configs/trackers/tracktrack_camera_fixed_4fps.yaml`. Xem số đo tại `outputs/camera_webrtc_trial/comparison.json`.
-
-### Thử tracking giữa các frame detection
-
-`scripts/experiments/benchmark_hybrid_camera.py` chạy YOLO26s + TrackTrack + ReID mỗi 6 hoặc 8 frame, rồi dùng optical flow để cập nhật vị trí của **cùng ID** trên từng frame xen giữa. TrackTrack vẫn là nơi cấp ID; optical flow không tự nhận dạng lại người sau khi mất dấu. Ví dụ chạy trên toàn bộ MOT17-04:
+### 3.2. Cài dịch vụ camera
 
 ```bash
-PYTHONPATH="$PWD/src:$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
-  python scripts/experiments/benchmark_hybrid_camera.py \
-  --source data/MOT17/train/MOT17-04-FRCNN --frames 1050 --interval 8 \
-  --reference outputs/mot17_train_openvino_fp32/online/train/MOT17-04-FRCNN \
-  --output outputs/camera_hybrid_flow_full_20261123
+getent group mot >/dev/null || sudo groupadd --system mot
+id -u mot >/dev/null 2>&1 || sudo useradd --system --gid mot --no-create-home --shell /usr/sbin/nologin mot
+sudo install -d -m 0755 /etc/mot
+sudo touch /etc/mot/rtsp-url
+sudo chown root:root /etc/mot/rtsp-url
+sudo chmod 600 /etc/mot/rtsp-url
+sudoedit /etc/mot/rtsp-url
 ```
 
-Kết quả trên CPU, chấm TrackEval với ground truth toàn video:
-
-- MOT17-04, mỗi 8 frame: **27,28 FPS**, HOTA **52,36**, IDF1 **63,41**; giữ nguyên box đạt HOTA 50,30, IDF1 62,11. Bản tham chiếu chạy detector mọi frame đạt HOTA 53,03, IDF1 63,95. Có bản xem thử 10 giây ở `outputs/camera_hybrid_flow_full_20261123/preview_10s.mp4`.
-- MOT17-02, mỗi 6 frame: **28,20 FPS**, HOTA **36,64**, IDF1 **46,52**; bản tham chiếu HOTA 36,88, IDF1 44,56.
-- MOT17-09, mỗi 6 frame: **27,61 FPS**, HOTA **50,07**, IDF1 **64,28**; bản tham chiếu HOTA 48,29, IDF1 59,25. Bản chạy mỗi 8 frame nhanh hơn nhưng giảm chất lượng đáng kể trên 02 và 09.
-
-Các FPS này là **thông lượng xử lý tuần tự** gồm đọc ảnh, detection thưa, optical flow và ghi MOT; chưa gồm WebRTC, vẽ box hoặc độ trễ phát trực tiếp. Bản tham chiếu dùng cùng checkpoint và tham số YOLO nhưng cấu hình TrackTrack cho video đầy đủ khác cấu hình camera thưa; so sánh với cách giữ box dùng đúng cùng cấu hình và cùng các frame detection. Lần detection vẫn gây ngắt quãng khoảng 170–200 ms, nên chưa thể kết luận trang camera hiển thị box mượt 25–30 FPS. Bản thử chưa thay profile dịch vụ camera; cần tách detection sang worker và đo FPS/độ trễ đồng thời với WebRTC trước khi đưa vào vận hành. Kết quả đầy đủ ở `outputs/camera_hybrid_flow_full_20261123/report.json`, `outputs/camera_hybrid_flow_mot17_02_i6_20261123/report.json` và `outputs/camera_hybrid_flow_mot17_09_i6_20261123/report.json`.
-
-### Đo đồng thời WebRTC và tracking trên luồng RTSP mô phỏng
-
-`scripts/experiments/verify_hybrid_live.py` phát lại MOT17-04 1080p30 qua MediaMTX, cho Chrome xem WebRTC và chạy tracker CPU ở hai worker: detection định kỳ, optical flow từng frame. Khi detection xong, vị trí được chiếu từ frame đã phát hiện tới frame mới nhất. Chạy với thư mục kết quả mới:
+Dán URL RTSP của tài khoản chỉ đọc vào một dòng, lưu tệp rồi chạy:
 
 ```bash
-PYTHONPATH="$PWD/src:$PWD/.runtime/openvino-python:$PWD/.runtime/reid-python" \
-  python scripts/experiments/verify_hybrid_live.py \
-  --interval 8 --seconds 20 --output outputs/camera_hybrid_live_check
+sudo install -m 0644 deploy/camera/mot-camera.service /etc/systemd/system/mot-camera.service
+sudo systemctl daemon-reload
+sudo systemctl restart mot-camera
+sudo journalctl -u mot-camera -n 30 --no-pager
 ```
 
-Trong cửa sổ 30 giây, Chrome hiển thị **28,03 FPS**, optical flow cập nhật quỹ đạo **30,17 FPS** trong 10 giây cuối, còn YOLO + TrackTrack + ReID đạt **3,70 FPS**. Không rơi frame ở hàng đợi optical flow. Cửa sổ 20 giây đo thêm độ đều: WebRTC **26,95 FPS**, khoảng cách frame p95 **65 ms**; tracking **30,04 FPS**, khoảng cách cập nhật p95 **92 ms**. Độ trễ detection p95 **496 ms**; 11 frame chờ detection bị thay bằng frame mới hơn. Vì vậy **thông lượng trung bình qua 25 FPS đã đạt, nhưng nhịp hiển thị và nhịp tracking chưa đều ở 25 FPS**. Trình duyệt hiện xem video nguồn không có box; quỹ đạo/ID được đo trong worker CPU, chưa được ghép lên video WebRTC. Cần giảm các khoảng dừng và đo trực tiếp overlay trên trình duyệt trước khi thay dịch vụ camera hiện tại. Xem `outputs/camera_hybrid_live_i8_20261125/report.json` và `outputs/camera_hybrid_live_jitter_20261125/report.json`.
-
-Lệnh trên cũng ghi `tracking.mp4` trong thư mục `--output`: video 960×540, 30 FPS, mỗi frame có box theo optical flow và ID do TrackTrack/ReID cấp. Xem bằng `ffplay outputs/camera_hybrid_live_check/tracking.mp4` sau khi lệnh kết thúc. Bản đã kiểm tra là `outputs/camera_hybrid_live_video_20261125/tracking.mp4`, gồm 665 frame trong 22,17 giây. Khi vừa ghi video vừa đo WebRTC, tốc độ hiển thị nguồn đạt **26,05 FPS**, cập nhật tracking **29,90 FPS** nhưng khoảng cách cập nhật p95 **103 ms**; chi tiết tại `outputs/camera_hybrid_live_video_20261125/report.json`.
-
-Video mới dùng lại `TrackVisualizer` để chọn màu theo ID và vẽ vệt quỹ đạo như pipeline trước đây; sau khi đo FPS, file được chuyển sang H.264. Xem bản đã tạo bằng:
+### 3.3. Mở trang camera qua Caddy
 
 ```bash
-ffplay outputs/camera_hybrid_colored_web_20261125/tracking.mp4
+caddy hash-password
+sudo touch /etc/caddy/mot-camera-users.caddy
+sudo chown root:caddy /etc/caddy/mot-camera-users.caddy
+sudo chmod 640 /etc/caddy/mot-camera-users.caddy
+sudoedit /etc/caddy/mot-camera-users.caddy
 ```
 
-Muốn tạo bản mới, chạy lại `verify_hybrid_live.py` với thư mục `--output` mới rồi mở `tracking.mp4` trong thư mục đó. Bản màu đã kiểm tra dài 14,73 giây, 442 frame ở 30 FPS; khi đồng thời ghi video và đo WebRTC, tốc độ tracking trung bình đạt 29,85 FPS, còn nhịp cập nhật p95 vẫn là 124 ms. Đây là video ghi lại, chưa phải overlay WebRTC phát trực tiếp.
+Nhập mật khẩu xem trang khi Caddy hỏi. Trong tệp vừa mở, lưu một dòng `viewer <hash>`, thay `<hash>` bằng giá trị lệnh in ra.
 
-## Chuẩn bị bản triển khai
+```bash
+sudo install -m 0644 deploy/camera/Caddyfile /etc/caddy/mot-camera.caddy
+sudoedit /etc/caddy/Caddyfile
+```
 
-1. Đặt một bản phát hành có phiên bản dưới `/opt/mot/releases/`. Bản phát hành gồm `src/`, `scripts/`, `configs/`, `deploy/`, `requirements.txt`, thư mục `weights/yolo26s_openvino_model/` đầy đủ và `weights/yolo26n-reid.onnx`. Dùng Python 3.11 cài dưới `/usr` hoặc `/opt` để tài khoản dịch vụ đọc được runtime. Tạo `.venv` trong bản phát hành và cài `deploy/camera/requirements.txt`. Trỏ `/opt/mot/current` vào phiên bản đã kiểm tra. Trình nạp kiểm tra checksum của OpenVINO và ReID khi khởi động.
-2. Tạo tài khoản hệ thống `mot` cùng group `mot`. Đặt URL của tài khoản chỉ đọc trên camera vào `/etc/mot/rtsp-url` với quyền `0600`, chủ sở hữu root. Cài `mot-camera.service` vào `/etc/systemd/system/`. Chạy `systemctl daemon-reload` rồi `systemctl start mot-camera` để nghiệm thu. Xem log bằng `journalctl -u mot-camera`.
-3. Trỏ `mot.home.arpa` về IP máy chủ trên DNS cục bộ hoặc máy xem. Cài Caddy và dùng [Caddyfile](Caddyfile). Đặt dòng `viewer <hash>` trong `/etc/caddy/mot-camera-users.caddy`, tạo hash bằng `caddy hash-password` và giới hạn quyền đọc cho tài khoản dịch vụ Caddy. Cho máy xem tin cậy CA nội bộ của Caddy, rồi mở `https://mot.home.arpa`. Giới hạn cổng HTTPS cho mạng LAN. Kiểm tra truy cập chưa đăng nhập trả `401` và sau đăng nhập cả trang lẫn API trả kết quả. [Caddy HTTPS nội bộ](https://caddyserver.com/docs/automatic-https#local-https) · [Xác thực Caddy](https://caddyserver.com/docs/caddyfile/directives/basic_auth)
+Thêm dòng `import /etc/caddy/mot-camera.caddy` ở ngoài các khối cấu hình, lưu tệp rồi chạy:
 
-## Nghiệm thu và quay lui
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile &&
+sudo systemctl reload caddy
+```
 
-- Chấm lại sau mỗi lần thay model hoặc ngưỡng tracker bằng `scripts/experiments/tune_camera_tracking.py`. Dùng kết quả OpenVINO online toàn video làm `--reference` và thư mục mới làm `--output`. Chọn cấu hình trên MOT17-02/09, chấm MOT17-04 với cùng frame và ground truth cho mỗi mức FPS. Ngưỡng chất lượng trên 04 là giảm tối đa 2 điểm HOTA và 3 điểm IDF1.
-- Trên camera thật, đo ít nhất 30 phút gồm lúc đông người và một lần mất mạng. Yêu cầu ít nhất 3,8 FPS trong 95% cửa sổ một phút có tín hiệu, RAM đỉnh tối đa 1,5 GiB và khôi phục trong 15 giây sau khi camera phát lại. Đo riêng p95 từ cảnh thật đến trình duyệt bằng đồng hồ mili giây đặt trong khung hình, mục tiêu không quá 1,2 giây. Kiểm tra chạy tiếp 24 giờ, trạng thái kết nối và mức sử dụng RAM ổn định, rồi dùng `systemctl enable mot-camera`.
-- Để quay về bản phát hành trước, trỏ `/opt/mot/current` về bản cũ, khôi phục unit systemd tương ứng và khởi động lại dịch vụ.
+Trỏ `mot.home.arpa` về IP máy chủ trong DNS nội bộ. Nếu dùng máy khách Linux và chưa có DNS nội bộ, chạy `sudoedit /etc/hosts` trên máy khách rồi thêm dòng `192.168.1.10 mot.home.arpa` với IP thật của máy chủ. Cài chứng chỉ CA `/var/lib/caddy/.local/share/caddy/pki/authorities/local/root.crt` lấy từ máy chủ vào kho tin cậy của máy khách. Giới hạn cổng HTTPS cho LAN. [Hướng dẫn CA nội bộ của Caddy](https://caddyserver.com/docs/running#local-https-with-systemd)
+
+## 4. Nghiệm thu
+
+- Mở [mot.home.arpa](https://mot.home.arpa). Khi chưa đăng nhập, trang và API phải trả `401`. Sau khi đăng nhập, kiểm tra luồng ảnh, box, ID và trạng thái camera.
+- Chạy camera thật ít nhất 30 phút, gồm lúc đông người và một lần mất mạng. Tracking cần đạt ít nhất **3 FPS trong 95% cửa sổ một phút có tín hiệu**. Thời gian nối lại tối đa **15 giây** sau khi camera phát lại.
+- Đo độ trễ từ cảnh thật tới trình duyệt bằng đồng hồ trong khung hình. Mục tiêu **p95 không quá 1,2 giây**. Sau 24 giờ chạy ổn định, bật tự khởi động bằng `systemctl enable mot-camera`.
+- Khi thay model hoặc tracker, chấm lại trên `deploy/video/fixture.mp4`. Mức giảm tối đa so với bản tham chiếu là **2 điểm HOTA** và **3 điểm IDF1**.

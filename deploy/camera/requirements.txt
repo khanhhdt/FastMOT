@@ -1,6 +1,0 @@
--r ../../requirements.txt
-openvino==2026.4.1
-openvino-telemetry==2025.2.0
-onnxruntime==1.32.0
-flatbuffers==25.12.19
-protobuf==7.36.2

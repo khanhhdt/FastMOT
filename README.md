@@ -238,15 +238,18 @@ curl --fail --location --output weights/yolo26s.pt https://github.com/ultralytic
 
 ## Tạo lại môi trường CPU
 
-`requirements.txt` khóa các phiên bản đã cài cho Python 3.11 trên Linux x86_64, gồm PyTorch CPU.
+`requirements.txt` liệt kê các thư viện Python cần cho camera, CLI tracking và chấm điểm trên Linux x86_64 với Python 3.11. Cài PyTorch và TorchVision từ kho wheel CPU trước.
 
 ```bash
 conda create -n mot python=3.11 pip
 conda activate mot
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 python -m pip install -r requirements.txt
 ```
 
 Bỏ qua bước tạo env nếu `mot` đã tồn tại. Cài đặt/tải trọng số cần mạng; các script kiểm tra chạy cục bộ sau khi đã có đủ thư viện và trọng số.
+
+Riêng benchmark lượng tử hóa INT8 cần cài thêm `nncf`.
 
 ## Cấu trúc dự án
 
